@@ -1,2 +1,5 @@
 # runtime binaries (ffmpeg / ffprobe etc.)
 bin/
+
+# macOS system files
+.DS_Store
