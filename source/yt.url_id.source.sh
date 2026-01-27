@@ -4,6 +4,10 @@
 # - stderr: diagnostics only
 # - return: always 0 (check stdout)
 
+# Prevent multiple sourcing
+[[ -n "${__URL_ID_SOURCED+x}" ]] && return 0
+__URL_ID_SOURCED=1
+
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   echo "[ERROR] $(basename "${BASH_SOURCE[0]}") must be sourced, not executed." >&2
   exit 1
