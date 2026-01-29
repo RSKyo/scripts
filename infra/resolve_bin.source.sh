@@ -5,25 +5,18 @@
 # - stderr: diagnostics only
 # - return: 0 on success, non-zero on failure
 #
-# Location: scripts/core/resolve_bin.source.sh
+# Location: scripts/infra/resolve_bin.source.sh
 
-# -------------------------------------------------
-# Guard: must be sourced, not executed
-# -------------------------------------------------
+# Prevent multiple sourcing
+[[ -n "${__XISf8HUw+x}" ]] && return 0
+__XISf8HUw=1
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  echo "[ERROR] $(basename "${BASH_SOURCE[0]}") must be sourced, not executed." >&2
-  exit 1
-fi
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/guard_source.source.sh"
+guard_source
 
-# -------------------------------------------------
-# Internal helpers
-# -------------------------------------------------
-
-_resolve_root() {
-  # scripts/core -> scripts
-  cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
-}
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/log.source.sh"
 
 _resolve_platform() {
   case "$(uname -s)" in
@@ -44,18 +37,17 @@ _resolve_platform() {
 
 _resolve_exec() {
   local name="$1"
+  local platform base_dir root_dir bin_dir candidate
 
-  local base_dir platform bin_dir candidate
-
-  base_dir="$(_resolve_root)"
   platform="$(_resolve_platform)"
-
   if [ "$platform" = "unsupported" ]; then
-    echo "Unsupported platform: $(uname -s)" >&2
+    logw "infra" "Unsupported platform: $(uname -s)"
     return 1
   fi
 
-  bin_dir="$base_dir/bin/$platform"
+  base_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+  root_dir="$(cd "$base_dir/.." >/dev/null && pwd)"
+  bin_dir="$root_dir/bin/$platform"
 
   # Special case: yt-dlp binary name on Linux
   if [ "$platform" = "linux" ] && [ "$name" = "yt-dlp" ]; then
@@ -71,14 +63,14 @@ _resolve_exec() {
         echo "$candidate"
         return 0
     else
-        echo "Binary found but not executable: $candidate" >&2
-        echo "Hint: run 'chmod +x $candidate'" >&2
+        loge "infra" "Binary found but not executable: $candidate"
+        loge "infra" "Hint: run 'chmod +x $candidate'"
         return 1
     fi
-    fi
+  fi
 
-    echo "Binary not found: $name (platform: $platform)" >&2
-    return 1
+  loge "infra" "Binary not found: $name (platform: $platform)"
+  return 1
 }
 
 # -------------------------------------------------
