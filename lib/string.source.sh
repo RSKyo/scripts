@@ -9,10 +9,16 @@
 # - stderr: none
 # - return: always 0
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  echo "[ERROR] $(basename "${BASH_SOURCE[0]}") must be sourced, not executed." >&2
-  exit 1
-fi
+# Prevent multiple sourcing
+[[ -n "${__ZWVc4Qaz+x}" ]] && return 0
+__ZWVc4Qaz=1
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../infra" >/dev/null && pwd)/guard_source.source.sh"
+guard_source
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/log.source.sh"
 
 __STRING_SANITIZE_RULES=(
   "/"   " - "  "path separator"

@@ -10,11 +10,6 @@
 [[ -n "${__wfI6ogTw+x}" ]] && return 0
 __wfI6ogTw=1
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  echo "[ERROR] $(basename "${BASH_SOURCE[0]}") must be sourced." >&2
-  exit 1
-fi
-
 _log_emit() {
   local level="$1"
   local scope="$2"

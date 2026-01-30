@@ -12,10 +12,6 @@
 __XISf8HUw=1
 
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/guard_source.source.sh"
-guard_source
-
-# shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/log.source.sh"
 
 _resolve_platform() {
