@@ -7,22 +7,17 @@
 # - return: always 0
 
 # Prevent multiple sourcing
-[[ -n "${__uIIGTsSG+x}" ]] && return 0
-__uIIGTsSG=1
+[[ -n "${__bApqO7xE+x}" ]] && return 0
+__bApqO7xE=1
 
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/log.source.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/bootstrap.source.sh"
 
 resolve_source() {
-  local base_dir root_dir lib_dir
   local selector file name
 
-  base_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
-  root_dir="$(cd "$base_dir/.." >/dev/null && pwd)"
-  lib_dir="$root_dir/lib"
-
-  if [[ ! -d "$lib_dir" ]]; then
-    logd "infra" "lib directory not found: $lib_dir"
+  if [[ ! -d "$LIB_DIR" ]]; then
+    logd "infra" "lib directory not found: $LIB_DIR"
     return 0
   fi
 
@@ -31,7 +26,7 @@ resolve_source() {
     return 0
   fi
 
-  for file in "$lib_dir"/*.source.sh; do
+  for file in "$LIB_DIR"/*.source.sh; do
     [[ -f "$file" ]] || continue
     name="${file##*/}"
 

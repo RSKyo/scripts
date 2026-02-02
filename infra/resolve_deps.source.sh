@@ -11,19 +11,13 @@
 __uUFKxEgU=1
 
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/log.source.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/bootstrap.source.sh"
 
 resolve_deps() {
-  local base_dir root_dir action_dir
   local kv var name file
 
-  # scripts/infra -> scripts
-  base_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
-  root_dir="$(cd "$base_dir/.." >/dev/null && pwd)"
-  action_dir="$root_dir/action"
-
-  if [[ ! -d "$action_dir" ]]; then
-    loge "infra" "action directory not found: $action_dir"
+  if [[ ! -d "$ACTION_DIR" ]]; then
+    loge "infra" "action directory not found: $ACTION_DIR"
     exit 1
   fi
 
@@ -41,7 +35,7 @@ resolve_deps() {
       exit 1
     fi
 
-    file="$action_dir/$name.sh"
+    file="$ACTION_DIR/$name.sh"
 
     if [[ ! -f "$file" ]]; then
       loge "infra" "dependency not found: $file"

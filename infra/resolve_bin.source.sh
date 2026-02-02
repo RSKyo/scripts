@@ -12,7 +12,7 @@
 __XISf8HUw=1
 
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/log.source.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/bootstrap.source.sh"
 
 _resolve_platform() {
   case "$(uname -s)" in
@@ -33,26 +33,27 @@ _resolve_platform() {
 
 _resolve_exec() {
   local name="$1"
-  local platform base_dir root_dir bin_dir candidate
+  local platform
+  local real_name candidate
 
   platform="$(_resolve_platform)"
   if [ "$platform" = "unsupported" ]; then
     logw "infra" "Unsupported platform: $(uname -s)"
     return 1
   fi
+  
+  real_name="$name"
+  case "$platform" in
+    linux)
+      [[ "$name" == "yt-dlp" ]] && real_name="yt-dlp_linux"
+      ;;
+    windows)
+      real_name="${name}.exe"
+      ;;
+  esac
 
-  base_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
-  root_dir="$(cd "$base_dir/.." >/dev/null && pwd)"
-  bin_dir="$root_dir/bin/$platform"
+  candidate="$BIN_DIR/$platform/$real_name"
 
-  # Special case: yt-dlp binary name on Linux
-  if [ "$platform" = "linux" ] && [ "$name" = "yt-dlp" ]; then
-    candidate="$bin_dir/yt-dlp_linux"
-  elif [ "$platform" = "windows" ]; then
-    candidate="$bin_dir/${name}.exe"
-  else
-    candidate="$bin_dir/${name}"
-  fi
 
   if [ -e "$candidate" ]; then
     if [ -x "$candidate" ]; then
@@ -66,6 +67,7 @@ _resolve_exec() {
   fi
 
   loge "infra" "Binary not found: $name (platform: $platform)"
+  loge "infra" "Expected at: $candidate"
   return 1
 }
 

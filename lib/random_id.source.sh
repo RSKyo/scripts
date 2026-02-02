@@ -5,8 +5,8 @@
 #   random_id 12         # custom length
 
 # Prevent multiple sourcing
-[[ -n "${__ZWVc4Qaz+x}" ]] && return 0
-__ZWVc4Qaz=1
+[[ -n "${__bnuXprz6+x}" ]] && return 0
+__bnuXprz6=1
 
 random_id() {
   local len="${1:-8}"
@@ -18,4 +18,5 @@ random_id() {
   }
 
   LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$len"
+  printf '\n'
 }
