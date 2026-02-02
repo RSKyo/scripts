@@ -6,10 +6,10 @@
 #     Print a yt-dlp metadata field for a YouTube URL.
 #
 # Convenience wrappers:
-# - yt_fetch_title <url>
-# - yt_fetch_description <url>
-# - yt_fetch_duration <url>
-# - yt_fetch_duration_string <url>
+# - yt_print_title <url>
+# - yt_print_description <url>
+# - yt_print_duration <url>
+# - yt_print_duration_string <url>
 #
 # Behavior:
 # - URL normalization is delegated to yt_url_canonical.
@@ -23,8 +23,8 @@
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__YT_PRINT_SOURCED+x}" ]] && return 0
-__YT_PRINT_SOURCED=1
+[[ -n "${__K3M8fR2Q+x}" ]] && return 0
+__K3M8fR2Q=1
 
 # -------------------------------------------------
 # Bootstrap infra
@@ -41,6 +41,9 @@ source "$INFRA_DIR/resolve_source.source.sh"
 # -------------------------------------------------
 resolve_source yt.url
 
+# -------------------------------------------------
+# Public API
+# -------------------------------------------------
 yt_print() {
   local url="$1"
   local field="$2"
