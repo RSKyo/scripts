@@ -63,6 +63,17 @@ yt_playlist_id() {
     pid="${BASH_REMATCH[1]}"
   fi
 
+  # RD → radio / mix（RD 不是 playlist，它只是以某个视频为种子的算法广播，不可复现）
+  # PL → 用户 / 系统播放列表
+  # OL → 专辑 / 官方列表
+  # UU → channel uploads（稳定映射）
+  # FL → Favorites / Like（老体系）
+  # 只接受稳定 playlist id：PL / OL / UU / FL
+  case "$pid" in
+    PL*|OL*|UU*|FL*) ;;
+    *) pid="" ;;
+  esac
+
   [[ -n "$pid" ]] && printf '%s\n' "$pid"
   return 0
 }

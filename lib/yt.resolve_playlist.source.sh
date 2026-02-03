@@ -1,30 +1,26 @@
 #!/usr/bin/env bash
-# Source-only library: YouTube metadata printer (yt-dlp wrapper)
+# Source-only library: YouTube playlist resolver (stable playlists only)
 #
 # Core primitive:
-# - yt_print <url> <field>
-#     Print a yt-dlp metadata field for a YouTube URL.
-#
-# Convenience wrappers:
-# - yt_print_title <url>
-# - yt_print_description <url>
-# - yt_print_duration <url>
-# - yt_print_duration_string <url>
+# - yt_resolve_playlist <url>
+#     Resolve a stable YouTube playlist (PL / OL / UU / FL only)
+#     and output each video's canonical watch URL.
 #
 # Behavior:
-# - URL normalization is delegated to yt_url_canonical.
-# - yt-dlp is used as the authoritative metadata source.
+# - Playlist id is extracted via yt_playlist_id (which enforces
+#   PL / OL / UU / FL whitelist).
+# - Algorithmic / radio-generated lists (e.g. RD) are ignored.
 #
 # Output:
-# - stdout: requested value (raw; wrappers may post-process)
+# - stdout: https://www.youtube.com/watch?v=<videoId> (one per line)
 # - stderr: diagnostics only (suppressed by default)
 # - return: always 0 (check stdout)
 
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__K3M8fR2Q+x}" ]] && return 0
-__K3M8fR2Q=1
+[[ -n "${__nDflLTRC+x}" ]] && return 0
+__nDflLTRC=1
 
 # -------------------------------------------------
 # Bootstrap infra
@@ -44,41 +40,34 @@ resolve_source yt.url
 # -------------------------------------------------
 # Public API
 # -------------------------------------------------
-yt_print() {
+
+yt_resolve_playlist() {
   local url="$1"
-  local field="$2"
-  local canonical=""
+  local pid=""
   local yt_dlp=""
+  local playlist_url=""
 
   [[ -n "$url" ]] || return 0
-  [[ -n "$field" ]] || return 0
 
-  canonical="$(yt_url_canonical "$url")"
-  [[ -n "$canonical" ]] || return 0
+  # Extract stable playlist id (PL / OL / UU / FL only)
+  # yt_playlist_id 内部已过滤 RD 等非稳定列表
+  pid="$(yt_playlist_id "$url" | head -n 1)"
+  [[ -n "$pid" ]] || return 0
 
   yt_dlp="$(resolve_yt_dlp)" || return 0
+  playlist_url="https://www.youtube.com/playlist?list=$pid"
 
+  # Emit canonical watch URLs for each video in playlist
   "$yt_dlp" \
     --no-warnings \
+    --flat-playlist \
     --skip-download \
-    --print "$field" \
-    "$canonical" 2>/dev/null
+    --print "id" \
+    "$playlist_url" 2>/dev/null \
+  | while IFS= read -r vid; do
+      [[ -n "$vid" ]] || continue
+      printf 'https://www.youtube.com/watch?v=%s\n' "$vid"
+    done
 
   return 0
-}
-
-yt_print_title() {
-  yt_print "$1" title | head -n 1
-}
-
-yt_print_description() {
-  yt_print "$1" description
-}
-
-yt_print_duration() {
-  yt_print "$1" duration | head -n 1
-}
-
-yt_print_duration_string() {
-  yt_print "$1" duration_string | head -n 1
 }
