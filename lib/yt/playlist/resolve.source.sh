@@ -20,6 +20,7 @@ __tDSRlIv2=1
 # Dependencies
 # -------------------------------------------------
 # 要求 bootstrap 在入口 source，这里可以只断言而不再次 source
+: "${yt_dlp:?yt_dlp not set (did you source bootstrap?)}"
 : "${LIB_DIR:?LIB_DIR not set (did you source bootstrap?)}"
 # source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/../../infra/bootstrap.source.sh"
 source "$LIB_DIR/yt/playlist/canonical.source.sh"
@@ -29,8 +30,6 @@ source "$LIB_DIR/yt/video/canonical.source.sh"
 # Public API
 # -------------------------------------------------
 yt_playlist_resolve() {
-  : "${yt_dlp:?yt_dlp not set (did you source bootstrap?)}"
-
   local input="$1"
   [[ -n "$input" ]] || return 0
 
