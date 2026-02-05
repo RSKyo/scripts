@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1090,SC1091
-# Source-only library: yt.video.title
-#
-# Semantics:
-# - Fetch YouTube video title via yt-dlp
-#
-# stdout: video title
-# stderr: none
-# return: always 0 (check stdout)
+# Source-only library: yt.video.tracklist
 
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__YT_VIDEO_TITLE_SOURCED+x}" ]] && return 0
-__YT_VIDEO_TITLE_SOURCED=1
+[[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
+__YT_VIDEO_TRACKLIST_SOURCED=1
 
 # -------------------------------------------------
 # Dependencies
@@ -23,16 +16,17 @@ __YT_VIDEO_TITLE_SOURCED=1
 : "${yt_dlp:?yt_dlp not set (did you source bootstrap?)}"
 : "${LIB_DIR:?LIB_DIR not set (did you source bootstrap?)}"
 
-source "$LIB_DIR/yt/video/canonical.source.sh"
+source "$LIB_DIR/yt/video/description.source.sh"
 
 # -------------------------------------------------
 # Public API
 # -------------------------------------------------
-yt_video_title() {
+yt_video_tracklist() {
   local input="$1"
   [[ -n "$input" ]] || return 0
 
-  local canonical_url="$(yt_video_canonical "$input")"
+  local description="$(yt_video_description "$input")"
+
 
   "$yt_dlp" \
     --no-warnings \

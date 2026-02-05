@@ -41,6 +41,18 @@ Binaries are organized by platform under `bin/<platform>/`.
 * Version: 8.0.1
 * Source: [https://evermeet.cx/ffmpeg/](https://evermeet.cx/ffmpeg/)
 
+### jq
+
+* File: `bin/darwin/jq-macos-amd64`
+* Purpose: JSON processor (parse and extract structured data)
+* Version: 1.8.1
+* Source: https://github.com/jqlang/jq/releases
+* Notes:
+
+  * Official single-file binary
+  * No runtime dependencies
+  * Used for parsing yt-dlp JSON output
+
 ---
 
 ## Platform: linux
@@ -76,6 +88,17 @@ Binaries are organized by platform under `bin/<platform>/`.
 * Version: 7.0.2
 * Source: [https://johnvansickle.com/ffmpeg/](https://johnvansickle.com/ffmpeg/)
 
+### jq
+
+* File: `bin/linux/jq-linux-amd64`
+* Purpose: JSON processor
+* Version: 1.8.1
+* Source: https://github.com/jqlang/jq/releases
+* Notes:
+
+  * Official static binary
+  * Used by yt metadata parsing scripts
+
 ---
 
 ## Platform: windows
@@ -109,6 +132,17 @@ Binaries are organized by platform under `bin/<platform>/`.
 * Purpose: Media metadata inspection
 * Version: 8.0.1
 * Source: [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/)
+
+### jq
+
+* File: `bin/windows/jq-win64.exe`
+* Purpose: JSON processor
+* Version: 1.8.1
+* Source: https://github.com/jqlang/jq/releases
+* Notes:
+
+  * Portable executable
+  * No installation required
 
 ---
 

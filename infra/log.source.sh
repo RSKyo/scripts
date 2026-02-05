@@ -7,8 +7,8 @@
 # - return: always 0
 
 # Prevent multiple sourcing
-[[ -n "${__wfI6ogTw+x}" ]] && return 0
-__wfI6ogTw=1
+[[ -n "${__LOG_SOURCED+x}" ]] && return 0
+__LOG_SOURCED=1
 
 _log_emit() {
   local level="$1"

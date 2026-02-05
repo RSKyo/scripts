@@ -14,15 +14,16 @@
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__vnMUSyx6+x}" ]] && return 0
-__vnMUSyx6=1
+[[ -n "${__YT_PLAYLIST_CANONICAL_SOURCED+x}" ]] && return 0
+__YT_PLAYLIST_CANONICAL_SOURCED=1
 
 # -------------------------------------------------
 # Dependencies
 # -------------------------------------------------
+# source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/../../infra/bootstrap.source.sh"
 # 要求 bootstrap 在入口 source，这里可以只断言而不再次 source
 : "${LIB_DIR:?LIB_DIR not set (did you source bootstrap?)}"
-# source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/../../infra/bootstrap.source.sh"
+
 source "$LIB_DIR/yt/playlist/id.source.sh"
 
 # -------------------------------------------------

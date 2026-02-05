@@ -17,8 +17,8 @@
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__ermMnuEG+x}" ]] && return 0
-__ermMnuEG=1
+[[ -n "${__YT_VIDEO_ID_SOURCED+x}" ]] && return 0
+__YT_VIDEO_ID_SOURCED=1
 
 # -------------------------------------------------
 # Public API

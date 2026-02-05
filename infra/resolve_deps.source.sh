@@ -7,8 +7,8 @@
 # - exit: program terminates on any failure
 
 # Prevent multiple sourcing
-[[ -n "${__uUFKxEgU+x}" ]] && return 0
-__uUFKxEgU=1
+[[ -n "${__RESOLVE_DEPS_SOURCED+x}" ]] && return 0
+__RESOLVE_DEPS_SOURCED=1
 
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)/bootstrap.source.sh"

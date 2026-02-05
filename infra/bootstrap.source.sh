@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1090,SC1091
 # Source-only library: bootstrap
 #
 # Role:
 # - Initialize runtime context for this repository
 # - Define project root and directory layout
-# - Resolve and export required external tool handles
+# - Detect or accept target platform
+# - Bind and export required repo-local external tools
 #
 # Contract:
 # - Must be sourced (not executed)
+# - PLATFORM may be preset by caller; otherwise detected at runtime
 # - On success, common paths and tool variables are available
 # - On failure, exits with non-zero status
 
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__qKHYLlwK+x}" ]] && return 0
-__qKHYLlwK=1
+[[ -n "${__BOOTSTRAP_SOURCED+x}" ]] && return 0
+__BOOTSTRAP_SOURCED=1
 
 # -------------------------------------------------
 # Resolve project directories
@@ -28,19 +31,47 @@ BIN_DIR="$ROOT_DIR/bin"
 
 export ROOT_DIR INFRA_DIR LIB_DIR ACTION_DIR BIN_DIR
 
-# shellcheck source=/dev/null
+# -------------------------------------------------
+# Logging
+# -------------------------------------------------
 source "$INFRA_DIR/log.source.sh"
 
 # -------------------------------------------------
-# Resolve common tools
+# Platform detection (allow preset)
 # -------------------------------------------------
-# shellcheck source=/dev/null
-source "$INFRA_DIR/bin.source.sh"
+if [[ -z "${PLATFORM:-}" ]]; then
+  case "$(uname -s)" in
+    Darwin)  PLATFORM="darwin" ;;
+    Linux)   PLATFORM="linux" ;;
+    MINGW*|MSYS*|CYGWIN*) PLATFORM="windows" ;;
+    *) echo "Unsupported platform" >&2; exit 1 ;;
+  esac
+fi
 
-# Resolve project common tools
-yt_dlp="$(bin_yt_dlp)"     || { echo "yt-dlp not found" >&2; exit 1; }
-ffmpeg="$(bin_ffmpeg)"     || { echo "ffmpeg not found" >&2; exit 1; }
-ffprobe="$(bin_ffprobe)"   || { echo "ffprobe not found" >&2; exit 1; }
-jq="$(bin_jq)"             || { echo "jq not found" >&2; exit 1; }
+export PLATFORM
+
+# -------------------------------------------------
+# Resolve binaries (exact filenames)
+# -------------------------------------------------
+case "$PLATFORM" in
+  darwin)
+    yt_dlp="$BIN_DIR/$PLATFORM/yt-dlp"
+    ffmpeg="$BIN_DIR/$PLATFORM/ffmpeg"
+    ffprobe="$BIN_DIR/$PLATFORM/ffprobe"
+    jq="$BIN_DIR/$PLATFORM/jq-macos-amd64"
+    ;;
+  linux)
+    yt_dlp="$BIN_DIR/$PLATFORM/yt-dlp_linux"
+    ffmpeg="$BIN_DIR/$PLATFORM/ffmpeg"
+    ffprobe="$BIN_DIR/$PLATFORM/ffprobe"
+    jq="$BIN_DIR/$PLATFORM/jq-linux-amd64"
+    ;;
+  windows)
+    yt_dlp="$BIN_DIR/$PLATFORM/yt-dlp.exe"
+    ffmpeg="$BIN_DIR/$PLATFORM/ffmpeg.exe"
+    ffprobe="$BIN_DIR/$PLATFORM/ffprobe.exe"
+    jq="$BIN_DIR/$PLATFORM/jq-win64.exe"
+    ;;
+esac
 
 export yt_dlp ffmpeg ffprobe jq

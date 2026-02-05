@@ -14,8 +14,8 @@
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__sKE5VnUD+x}" ]] && return 0
-__sKE5VnUD=1
+[[ -n "${__YT_VIDEO_CANONICAL_SOURCED+x}" ]] && return 0
+__YT_VIDEO_CANONICAL_SOURCED=1
 
 # -------------------------------------------------
 # Dependencies

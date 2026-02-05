@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1090,SC1091
-# Source-only library: yt.video.title
+# Source-only library: yt.video.duration_string
 #
 # Semantics:
-# - Fetch YouTube video title via yt-dlp
+# - Fetch YouTube video duration string via yt-dlp
 #
-# stdout: video title
+# stdout: duration string (e.g. 3:45, 1:02:13)
 # stderr: none
 # return: always 0 (check stdout)
 
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__YT_VIDEO_TITLE_SOURCED+x}" ]] && return 0
-__YT_VIDEO_TITLE_SOURCED=1
+[[ -n "${__YT_VIDEO_DURATION_STRING_SOURCED+x}" ]] && return 0
+__YT_VIDEO_DURATION_STRING_SOURCED=1
 
 # -------------------------------------------------
 # Dependencies
@@ -28,16 +28,17 @@ source "$LIB_DIR/yt/video/canonical.source.sh"
 # -------------------------------------------------
 # Public API
 # -------------------------------------------------
-yt_video_title() {
+yt_video_duration_string() {
   local input="$1"
   [[ -n "$input" ]] || return 0
 
-  local canonical_url="$(yt_video_canonical "$input")"
+  local canonical_url
+  canonical_url="$(yt_video_canonical "$input")"
 
   "$yt_dlp" \
     --no-warnings \
     --skip-download \
-    --print "title" \
+    --print "duration_string" \
     "$canonical_url" 2>/dev/null
 
   return 0

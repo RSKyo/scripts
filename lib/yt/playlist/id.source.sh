@@ -14,8 +14,8 @@
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-[[ -n "${__vGrb7zCA+x}" ]] && return 0
-__vGrb7zCA=1
+[[ -n "${__YT_PLAYLIST_ID_SOURCED+x}" ]] && return 0
+__YT_PLAYLIST_ID_SOURCED=1
 
 # -------------------------------------------------
 # Public API
