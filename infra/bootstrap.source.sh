@@ -75,3 +75,25 @@ case "$PLATFORM" in
 esac
 
 export yt_dlp ffmpeg ffprobe jq
+
+# -------------------------------------------------
+# External interpreters (capability wrappers)
+# -------------------------------------------------
+
+__require_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    loge "BOOTSTRAP" "Required command not found: $cmd"
+    return 127
+  fi
+}
+
+__perl() {
+  __require_cmd perl || return $?
+  perl -CS -Mutf8 -e "$1" "${@:2}"
+}
+
+__awk() {
+  __require_cmd awk || return $?
+  awk "$@"
+}
