@@ -9,6 +9,38 @@
 # __YT_VIDEO_TRACKLIST_SOURCED=1
 
 # -------------------------------------------------
+# Track title separator patterns
+# Domain-specific: used for bilingual track titles
+# -------------------------------------------------
+
+readonly __TRACK_SEP_DASH_REGEX='[-–—]'
+readonly __TRACK_SEP_PIPE_REGEX='\|'
+readonly __TRACK_SEP_SLASH_REGEX='\/'
+readonly __TRACK_SEP_DOT_REGEX='·'
+readonly __TRACK_SEP_COLON_REGEX='[:：]'
+
+# Round brackets (directional)
+readonly __TRACK_SEP_ROUND_L_REGEX='[\(（]'
+readonly __TRACK_SEP_ROUND_R_REGEX='[\)）]'
+
+# Square brackets (directional)
+readonly __TRACK_SEP_SQUARE_L_REGEX='[\[【]'
+readonly __TRACK_SEP_SQUARE_R_REGEX='[\]】]'
+
+# Priority order for separator detection (first match wins)
+readonly __TRACK_SEP_CLASSES=(
+  DASH
+  PIPE
+  SLASH
+  DOT
+  ROUND_L
+  ROUND_R
+  SQUARE_L
+  SQUARE_R
+  COLON
+)
+
+# -------------------------------------------------
 # Dependencies
 # -------------------------------------------------
 # source "$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/../../infra/bootstrap.source.sh"

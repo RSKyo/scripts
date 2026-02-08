@@ -4,9 +4,7 @@
 # Source-only library: Unicode letter helpers
 #
 
-# -------------------------------------------------
 # Prevent multiple sourcing
-# -------------------------------------------------
 [[ -n "${__LETTER_SOURCED+x}" ]] && return 0
 __LETTER_SOURCED=1
 
@@ -24,10 +22,6 @@ __normalize_script() {
     *)                 return 1 ;;
   esac
 }
-
-# -------------------------------------------------
-# Public API
-# -------------------------------------------------
 
 # Count all Unicode letters (\p{L})
 letter_count() {
