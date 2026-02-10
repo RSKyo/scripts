@@ -52,7 +52,9 @@ source "$LIB_DIR/time.source.sh"
 source "$LIB_DIR/text.source.sh"
 source "$LIB_DIR/num.source.sh"
 
-
+# -------------------------------------------------
+# Internal functions
+# -------------------------------------------------
 __yt_video_tracklist_timestamp_side() {
   local sep="$__TRACKLIST_SEP"
   local score=0
@@ -65,22 +67,6 @@ __yt_video_tracklist_timestamp_side() {
   done
 
   (( score > 0 )) && printf 'right\n' || printf 'left\n'
-}
-
-__yt_video_tracklist_repeat_mode() {
-  local duration="$1"
-  local sep="$__TRACKLIST_SEP"
-
-  local row ts _ last_sec
-
-  while IFS= read -r row; do
-    IFS="$sep" read -r _ ts _ <<< "$row"
-  done
-
-  last_sec="$(time_parse_hms_to_s "$ts")"
-  (( last_sec > 0 )) || return 0
-
-  num_ratio_ge "$duration" "$last_sec" 1.5 && printf 'loop\n'
 }
 
 __yt_video_tracklist_raw() {
@@ -104,60 +90,61 @@ __yt_video_tracklist_raw() {
   return 0
 }
 
+__yt_video_tracklist_repeat_mode() {
+  local duration="$1"
+  local sep="$__TRACKLIST_SEP"
 
-__yt_video_tracklist_title_start_min_pos() {
-  local rows_name="$1"
+  local row ts _ last_sec
 
-  # shellcheck disable=SC2178,SC2034
-  local -n rows_ref="$rows_name"
+  while IFS= read -r row; do
+    IFS="$sep" read -r ts _ <<< "$row"
+  done
 
-  local sep="$__YT_VIDEO_TRACKLIST_SEP"
+  last_sec="$(time_parse_hms_to_s "$ts")"
+  (( last_sec > 0 )) || return 0
+
+  num_ratio_ge "$duration" "$last_sec" 1.5 && printf 'repeat\n'
+}
+
+__yt_video_tracklist_start_min_pos() {
+  local sep="$__TRACKLIST_SEP"
 
   local row ts title pos
   local min_pos=0
 
-  for row in "${rows_ref[@]}"; do
+  while IFS= read -r row; do
     IFS="$sep" read -r ts title <<< "$row"
-
-    # @loop 行不处理
-    [[ "$title" == '@loop' ]] && continue
 
     pos="$(first_letter_pos "$title")" || continue
     [[ -n "$pos" ]] || continue
 
-    if (( min_pos == 0 || pos < min_pos )); then
-      min_pos="$pos"
-    fi
+  (( pos < min_pos )) && min_pos="$pos"
+ 
   done
 
   (( min_pos > 0 )) && printf '%s\n' "$min_pos"
   return 0
 }
 
-__yt_video_tracklist_trim_title() {
-  local rows_name="$1"
-  local title_start_min_pos="$2"   # 1-based
+__yt_video_tracklist_title_trim() {
+  local min_pos="$1"   # 1-based
+  local sep="$__TRACKLIST_SEP"
 
-  # shellcheck disable=SC2178,SC2034
-  local -n rows_ref="$rows_name"
+  local row ts title
 
-  local sep="$__YT_VIDEO_TRACKLIST_SEP"
-  local i ts title
+  while IFS= read -r row; do
+    IFS="$sep" read -r ts title <<< "$row"
 
-  for (( i=0; i<${#rows_ref[@]}; i++ )); do
-    IFS="$sep" read -r ts title <<< "${rows_ref[i]}"
-
-    # @loop 行不处理
-    [[ "$title" == '@loop' ]] && continue
-
-    title="$(string_substr "$title" "$title_start_min_pos")"
+    title="$(string_substr "$title" "$min_pos")"
     title="$(alnum_trim "$title")"
 
-    rows_ref[i]="${ts}${sep}${title}"
+    printf '%s%s%s\n' "$ts" "$sep" "$title"
   done
 
   return 0
 }
+
+
 
 
 
@@ -172,67 +159,65 @@ yt_video_tracklist() {
   local input="$1"
   [[ -n "$input" ]] || return 0
 
-  # 1、获取视频描述
+  # 1、获取视频描述文本
   local description
   description="$(yt_video_description "$input")"
   [[ -n "$description" ]] || return 0
 
-  # 2、获取视频总时长
-  local duration
-  duration="$(yt_video_duration "$input")"
-  [[ "$duration" =~ ^[0-9]+$ ]] || return 0
-
-  # 3、过滤出带有时间戳的行，并解析成行结构（left timestamp right）
-  local timestamp_parts
-  timestamp_parts="$(
+  # 2、从描述文本中提取出可能的 tracklist 行
+  local expanded_lines
+  expanded_lines="$(
     printf '%s\n' "$description" |
-    text_filter_parts \
+    text_match_expand \
       "$__TRACKLIST_TIMESTAMP_REGEX" \
       --sep "$__TRACKLIST_SEP"
   )"
-  [[ -n "$timestamp_parts" ]] || return 0
-
+  [[ -n "$expanded_lines" ]] || return 0
   
-  # 3.1、判断时间戳位置（左/右）
+  # 3、判断时间戳在 track title 的左侧还是右侧
   local timestamp_side
   timestamp_side="$(
-    printf '%s\n' "$timestamp_parts" |
+    printf '%s\n' "$expanded_lines" |
     __yt_video_tracklist_timestamp_side
   )"
 
-  # 3.2、判断是否循环播放
+  # 4、根据时间戳位置提取出原始 tracklist（包含时间戳和标题，但未处理标题前的空格等杂项）
+  local tracklist_raw
+  tracklist_raw="$(
+    printf '%s\n' "$expanded_lines" |
+    __yt_video_tracklist_raw "$timestamp_side"
+  )"
+
+  # 5、获取 track title 的起始位置最小值（用于后续批量修剪标题前的杂项）
+  local min_pos
+  min_pos="$(
+    printf '%s\n' "$tracklist_raw" |
+    __yt_video_tracklist_start_min_pos
+  )"
+
+  # 6、修剪 track title 前的杂项（如空格、特殊符号等），得到 trimmed 的 tracklist
+  local tracklist_trimmed
+  tracklist_trimmed="$(
+    printf '%s\n' "$tracklist_raw" |
+    __yt_video_tracklist_title_trim "$min_pos"
+  )"
+
+
+
+  # 7、（可选）判断是否存在重复播放模式（即最后一个 track 的时间戳与视频总时长的比例是否超过某个阈值）
+  local duration
+  duration="$(yt_video_duration "$input")"
+  [[ "$duration" =~ ^[0-9]+$ ]] || return 0
+  
+  # 注意：如果无法获取视频总时长，则无法判断是否存在重复播放模式，此时默认不启用重复播放模式
   local repeat_mode
   repeat_mode="$(
-    printf '%s\n' "$timestamp_parts" |
+    printf '%s\n' "$tracklist_raw" |
     __yt_video_tracklist_repeat_mode "$duration"
   )"
 
 
-  local tracklist_raw
-  tracklist_raw="$(
-    printf '%s\n' "$timestamp_parts" |
-    __yt_video_tracklist_raw "$timestamp_side"
-  )"
-
-  
-
-  
-
-  # # 5) 提取原始 tracklist 行（ts + title），并对 loop 行特殊标记
-  # __yt_video_tracklist_extract_raw rows "$ts_side" "$is_loop"
-
-  # # 6) 判断标题起始位置（1-based），以便后续切分标题文本和装饰符（如 emoji、括号、引号等）
-  # # 注意：这里的标题起始位置是所有 tracklist 行中最靠前的那个，以兼容不同 track 标题装饰不一致的情况
-  # # 例如，标题前有序号，1-9是1位符，10及以上是2字符，取最靠前的位置防止截断标题
-  # local title_start_min_pos
-  # title_start_min_pos="$(__yt_video_tracklist_title_start_min_pos rows)" 
-  # [[ -n "$title_start_min_pos" ]] || return 0
-
-  # # 7) 根据标题起始位置切分标题，去除多余文本装饰（保留原始装饰符）
-  # __yt_video_tracklist_trim_title rows "$title_start_min_pos"
-
-  # # 2) output rows
-  # printf '%s\n' "${rows[@]}"
+  printf '%s\n' "$tracklist_trimmed"
 
   return 0
 }

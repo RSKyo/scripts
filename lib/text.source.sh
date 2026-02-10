@@ -14,13 +14,13 @@ __TEXT_SOURCED=1
 source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/num.source.sh"
 
-# text_filter <regex>
+# text_match <regex>
 #
 # Filter stdin line by line using a Bash regex.
 #
 # - stdout: matched lines
 # - return: always 0
-text_filter() {
+text_match() {
   local regex="$1"
   [[ -z "$regex" ]] && return 0
 
@@ -30,7 +30,7 @@ text_filter() {
   done
 }
 
-# text_filter_parts <regex> [--sep SEP] [--window START END]
+# text_match_expand <regex> [--sep SEP] [--window START END]
 #
 # Filter lines by regex and split each matched line into:
 #   left | match | right
@@ -47,7 +47,7 @@ text_filter() {
 # Notes:
 # - Lines are trimmed before processing.
 # - Only the first match is considered.
-text_filter_parts() {
+text_match_expand() {
   local regex=
   local sep=$'\x1f'
   local win_start=
