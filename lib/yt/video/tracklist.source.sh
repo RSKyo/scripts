@@ -42,6 +42,7 @@ readonly __TRACKLIST_SEP_CLASSES=(
 
 readonly __TRACKLIST_TIMESTAMP_REGEX='([0-9]{1,2}:[0-9]{2}(:[0-9]{2})?)'
 readonly __TRACKLIST_SEP=$'\x1f'
+readonly __TRACKLIST_MAX_POS=9999
 
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/yt/video/description.source.sh"
@@ -55,6 +56,30 @@ source "$LIB_DIR/num.source.sh"
 # -------------------------------------------------
 # Internal functions
 # -------------------------------------------------
+
+__yt_video_tracklist_sep_class_regex() {
+  local cls="$1"
+
+  case "$cls" in
+    DASH)     printf '%s\n' "$__TRACKLIST_SEP_DASH_REGEX" ;;
+    PIPE)     printf '%s\n' "$__TRACKLIST_SEP_PIPE_REGEX" ;;
+    SLASH)    printf '%s\n' "$__TRACKLIST_SEP_SLASH_REGEX" ;;
+    DOT)      printf '%s\n' "$__TRACKLIST_SEP_DOT_REGEX" ;;
+    COLON)    printf '%s\n' "$__TRACKLIST_SEP_COLON_REGEX" ;;
+    ROUND_L)  printf '%s\n' "$__TRACKLIST_SEP_ROUND_L_REGEX" ;;
+    ROUND_R)  printf '%s\n' "$__TRACKLIST_SEP_ROUND_R_REGEX" ;;
+    SQUARE_L) printf '%s\n' "$__TRACKLIST_SEP_SQUARE_L_REGEX" ;;
+    SQUARE_R) printf '%s\n' "$__TRACKLIST_SEP_SQUARE_R_REGEX" ;;
+    *)        return 1 ;;
+  esac
+
+  return 0
+}
+
+# -------------------------------------------------
+# 解析 tracklist 中的时间戳和标题
+# -------------------------------------------------
+
 __yt_video_tracklist_timestamp_side() {
   local sep="$__TRACKLIST_SEP"
   local score=0
@@ -78,11 +103,13 @@ __yt_video_tracklist_raw() {
   if [[ "$ts_side" == left ]]; then
     while IFS= read -r row; do
       IFS="$sep" read -r left ts right <<< "$row"
+      [[ -n "$right" ]] || continue
       printf '%s%s%s\n' "$ts" "$sep" "$right"
     done
   else
     while IFS= read -r row; do
       IFS="$sep" read -r left ts right <<< "$row"
+      [[ -n "$left" ]] || continue
       printf '%s%s%s\n' "$ts" "$sep" "$left"
     done
   fi
@@ -90,63 +117,118 @@ __yt_video_tracklist_raw() {
   return 0
 }
 
-__yt_video_tracklist_repeat_mode() {
-  local duration="$1"
-  local sep="$__TRACKLIST_SEP"
+# -------------------------------------------------
+# title 处理
+# -------------------------------------------------
 
-  local row ts _ last_sec
+# 提取 track title（不含时间戳）
+__yt_video_tracklist_titles_only() {
+  local sep="$__TRACKLIST_SEP"
+  local row _ title
+
+  while IFS= read -r row; do
+    IFS="$sep" read -r _ title <<< "$row"
+    printf '%s\n' "$title"
+  done
+
+  return 0
+}
+
+__yt_video_tracklist_title_min_pos() {
+  local title pos
+  local min_pos="$__TRACKLIST_MAX_POS"
+
+  while IFS= read -r title; do
+    pos="$(first_letter_pos "$title")" || continue
+    [[ -n "$pos" ]] || continue
+
+    (( pos < min_pos )) && min_pos="$pos"
+  done
+
+  (( min_pos < __TRACKLIST_MAX_POS )) && printf '%s\n' "$min_pos"
+  return 0
+}
+
+
+__yt_video_tracklist_title_trim() {
+  local min_pos="$1"   # 1-based
+  local title
+
+  while IFS= read -r title; do
+    title="$(string_substr "$title" "$min_pos")"
+    title="$(alnum_trim "$title")"
+
+    printf '%s\n' "$title"
+  done
+
+  return 0
+}
+
+__yt_video_tracklist_title_sep_class() {
+  local input
+  input="$(cat)"   # ⬅️ 一次性缓存 stdin
+
+  local cls regex
+
+  for cls in "${__TRACKLIST_SEP_CLASSES[@]}"; do
+    regex="$(__yt_video_tracklist_sep_class_regex "$cls")" || continue
+
+    if printf '%s\n' "$input" | text_supports_match "$regex" --window 0.15 0.85; then
+      printf '%s\n' "$cls"
+      return 0
+    fi
+  done
+
+  return 0
+}
+
+
+__yt_video_tracklist_title_expand() {
+  local cls="$1"
+  [[ -n "$cls" ]] || return 0
+
+  local regex
+  regex="$(__yt_video_tracklist_sep_class_regex "$cls")" || return 0
+
+  text_match_expand "$regex" --sep "$__TRACKLIST_SEP" --window 0.15 0.85;
+}
+
+
+# -------------------------------------------------
+# repeat
+# -------------------------------------------------
+
+# 提取 track title（不含时间戳）
+__yt_video_tracklist_ts_only() {
+  local sep="$__TRACKLIST_SEP"
+  local row ts _
 
   while IFS= read -r row; do
     IFS="$sep" read -r ts _ <<< "$row"
+    printf '%s\n' "$ts"
   done
+
+  return 0
+}
+
+__yt_video_tracklist_repeat_mode() {
+  local duration="$1"
+  local ts=
+  local last_sec
+
+  # 取最后一个时间戳
+  while IFS= read -r ts; do
+    :
+  done
+
+  [[ -n "$ts" ]] || return 0
 
   last_sec="$(time_parse_hms_to_s "$ts")"
   (( last_sec > 0 )) || return 0
 
   num_ratio_ge "$duration" "$last_sec" 1.5 && printf 'repeat\n'
-}
-
-__yt_video_tracklist_start_min_pos() {
-  local sep="$__TRACKLIST_SEP"
-
-  local row ts title pos
-  local min_pos=0
-
-  while IFS= read -r row; do
-    IFS="$sep" read -r ts title <<< "$row"
-
-    pos="$(first_letter_pos "$title")" || continue
-    [[ -n "$pos" ]] || continue
-
-  (( pos < min_pos )) && min_pos="$pos"
- 
-  done
-
-  (( min_pos > 0 )) && printf '%s\n' "$min_pos"
   return 0
 }
-
-__yt_video_tracklist_title_trim() {
-  local min_pos="$1"   # 1-based
-  local sep="$__TRACKLIST_SEP"
-
-  local row ts title
-
-  while IFS= read -r row; do
-    IFS="$sep" read -r ts title <<< "$row"
-
-    title="$(string_substr "$title" "$min_pos")"
-    title="$(alnum_trim "$title")"
-
-    printf '%s%s%s\n' "$ts" "$sep" "$title"
-  done
-
-  return 0
-}
-
-
-
-
 
 
 
@@ -192,7 +274,7 @@ yt_video_tracklist() {
   local min_pos
   min_pos="$(
     printf '%s\n' "$tracklist_raw" |
-    __yt_video_tracklist_start_min_pos
+    text_supports_match
   )"
 
   # 6、修剪 track title 前的杂项（如空格、特殊符号等），得到 trimmed 的 tracklist

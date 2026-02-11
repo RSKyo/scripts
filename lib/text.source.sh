@@ -118,7 +118,7 @@ text_match_expand() {
   return 0
 }
 
-# text_detect <regex> [--support RATIO] [--window START END]
+# text_supports_match <regex> [--support RATIO] [--window START END]
 #
 # Detect whether a text exhibits a feature based on per-line match ratio.
 #
@@ -135,7 +135,7 @@ text_match_expand() {
 # Notes:
 # - Lines are trimmed before evaluation.
 # - Window semantics are consistent with text_filter_parts.
-text_detect() {
+text_supports_match() {
   local regex=
   local support=0.6
   local win_start=
