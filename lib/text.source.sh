@@ -14,21 +14,70 @@ __TEXT_SOURCED=1
 source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/num.source.sh"
 
-# text_match <regex>
-#
-# Filter stdin line by line using a Bash regex.
-#
+# -------------------------------------------------
+# Text processing functions
+# -------------------------------------------------
+
+# text_match <regex> [--window START END]
+# Filter lines by regex.
+# - --window START END
+#     Restrict where a match may occur (relative range [0.0, 1.0])
 # - stdout: matched lines
 # - return: always 0
 text_match() {
-  local regex="$1"
+  local regex=
+  local win_from_ratio=
+  local win_to_ratio=
+
+  regex="$1"
+  shift || true
   [[ -z "$regex" ]] && return 0
 
+  # parse options
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --window)
+        win_from_ratio="$2"
+        win_to_ratio="$3"
+        shift 3
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
   while IFS= read -r line; do
-    [[ "$line" =~ $regex ]] || continue
+    local window="$line"
+    local win_from_pos
+    local win_to_pos
+
+    # apply window only if provided
+    if [[ -n "$win_from_ratio" && -n "$win_to_ratio" ]]; then
+      local len=${#line}
+      (( len > 0 )) || continue
+
+      win_from_pos="$(num_mul "$len" "$win_from_ratio" trunc 0)"
+      win_to_pos="$(num_mul "$len" "$win_to_ratio" trunc 0)"
+
+      (( win_to_pos > win_from_pos )) || continue
+
+      window="${line:win_from_pos:win_to_pos-win_from_pos}"
+    fi
+
+    [[ "$window" =~ $regex ]] || continue
     printf '%s\n' "$line"
   done
+
+  return 0
 }
+
+
+
 
 # text_match_expand <regex> [--sep SEP] [--window START END]
 #

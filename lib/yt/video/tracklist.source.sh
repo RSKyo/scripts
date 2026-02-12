@@ -57,7 +57,7 @@ source "$LIB_DIR/num.source.sh"
 # Internal functions
 # -------------------------------------------------
 
-__yt_video_tracklist_sep_class_regex() {
+__yt_video_tracklist_sep_regex() {
   local cls="$1"
 
   case "$cls" in
@@ -171,7 +171,7 @@ __yt_video_tracklist_title_sep_class() {
   local cls regex
 
   for cls in "${__TRACKLIST_SEP_CLASSES[@]}"; do
-    regex="$(__yt_video_tracklist_sep_class_regex "$cls")" || continue
+    regex="$(__yt_video_tracklist_sep_regex "$cls")" || continue
 
     if printf '%s\n' "$input" | text_supports_match "$regex" --window 0.15 0.85; then
       printf '%s\n' "$cls"
@@ -188,7 +188,7 @@ __yt_video_tracklist_title_expand() {
   [[ -n "$cls" ]] || return 0
 
   local regex
-  regex="$(__yt_video_tracklist_sep_class_regex "$cls")" || return 0
+  regex="$(__yt_video_tracklist_sep_regex "$cls")" || return 0
 
   text_match_expand "$regex" --sep "$__TRACKLIST_SEP" --window 0.15 0.85;
 }
