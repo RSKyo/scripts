@@ -1,260 +1,194 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1090,SC1091
-#
 # text.source.sh
-#
-# Line-based text helpers for filtering, splitting, and detection.
-#
+# Line-based text utilities.
+# - _text_* : array-based primitives (nameref output)
+# - text_*  : stream wrappers (stdin → stdout)
+# - Internal field separator: __TEXT_SEP
+
+# shellcheck disable=SC1091
 
 # Prevent multiple sourcing
 [[ -n "${__TEXT_SOURCED+x}" ]] && return 0
 __TEXT_SOURCED=1
 
+# Internal field separator.
+readonly __TEXT_SEP=$'\x1f'
+
 # Dependencies (bootstrap must be sourced by the entry script)
+source "$INFRA_DIR/options.source.sh"
 source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/num.source.sh"
 
-# -------------------------------------------------
-# Text processing functions
-# -------------------------------------------------
+# _text_expand <out_ref> <regex> [from_ratio] [to_ratio]
+# Apply _string_expand to each stdin line.
+# Result written to <out_ref> (array).
+_text_expand() {
+  local -n out_ref="$1"
+  local regex="${2:?_text_expand: missing regex}"
+  local win_from_ratio="${3:-0}"
+  local win_to_ratio="${4:-1}"
 
-# text_match <regex> [--window START END]
-# Filter lines by regex.
-# - --window START END
-#     Restrict where a match may occur (relative range [0.0, 1.0])
-# - stdout: matched lines
-# - return: always 0
-text_match() {
-  local regex=
-  local win_from_ratio=
-  local win_to_ratio=
-
-  regex="$1"
-  shift || true
-  [[ -z "$regex" ]] && return 0
-
-  # parse options
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --window)
-        win_from_ratio="$2"
-        win_to_ratio="$3"
-        shift 3
-        ;;
-      --)
-        shift
-        break
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
+  out_ref=()
+  local line line_expanded
 
   while IFS= read -r line; do
-    local window="$line"
-    local win_from_pos
-    local win_to_pos
+    _string_expand line_expanded \
+      "$line" "$regex" "$win_from_ratio" "$win_to_ratio"
 
-    # apply window only if provided
-    if [[ -n "$win_from_ratio" && -n "$win_to_ratio" ]]; then
-      local len=${#line}
-      (( len > 0 )) || continue
-
-      win_from_pos="$(num_mul "$len" "$win_from_ratio" trunc 0)"
-      win_to_pos="$(num_mul "$len" "$win_to_ratio" trunc 0)"
-
-      (( win_to_pos > win_from_pos )) || continue
-
-      window="${line:win_from_pos:win_to_pos-win_from_pos}"
-    fi
-
-    [[ "$window" =~ $regex ]] || continue
-    printf '%s\n' "$line"
+    out_ref+=("$line_expanded")
   done
 
   return 0
 }
 
+# text_expand <regex> [from_ratio] [to_ratio]
+# Expand each stdin line and print results.
+text_expand() {
+  local -a result=()
+  _text_expand result "$@"
+  printf '%s\n' "${result[@]}"
+}
 
+# _text_filter <out_ref> <regex> [from_ratio] [to_ratio] [expand]
+# Keep lines whose windowed match is non-empty.
+# If expand=1, store expanded form; otherwise store original line.
+# Result written to <out_ref> (array).
+_text_filter() {
+  local -n out_ref="$1"
+  local regex="${2:?_text_filter: missing regex}"
+  local win_from_ratio="${3:-0}"
+  local win_to_ratio="${4:-1}"
+  local expand="${5:-0}"
 
-
-# text_match_expand <regex> [--sep SEP] [--window START END]
-#
-# Filter lines by regex and split each matched line into:
-#   left | match | right
-#
-# - --sep SEP
-#     Output field separator (default: ASCII Unit Separator \x1f)
-#
-# - --window START END
-#     Restrict where a match may occur (relative range [0.0, 1.0])
-#
-# - stdout: left<sep>match<sep>right
-# - return: always 0
-#
-# Notes:
-# - Lines are trimmed before processing.
-# - Only the first match is considered.
-text_match_expand() {
-  local regex=
-  local sep=$'\x1f'
-  local win_start=
-  local win_end=
-
-  # first positional argument: regex
-  regex="$1"
-  shift || true
-  [[ -z "$regex" ]] && return 0
-
-  # parse options
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --sep)
-        sep="$2"
-        shift 2
-        ;;
-      --window)
-        win_start="$2"
-        win_end="$3"
-        shift 3
-        ;;
-      --)
-        shift
-        break
-        ;;
-      *)
-        # unknown option: ignore
-        shift
-        ;;
-    esac
-  done
+  out_ref=()
+  local line line_expanded
+  local left match right
 
   while IFS= read -r line; do
-    line="$(string_trim "$line")"
     [[ -n "$line" ]] || continue
 
-    # decide match window: full line or window slice
-    local window="$line"
-    local window_left=''
-    local window_right=''
+    _string_expand line_expanded \
+      "$line" "$regex" "$win_from_ratio" "$win_to_ratio"
 
-    # apply window only if explicitly provided
-    if [[ -n "$win_start" && -n "$win_end" ]]; then
-      local len=${#line}
-      (( len > 0 )) || continue
+    IFS="$__TEXT_SEP" read -r left match right <<< "$line_expanded"
+    [[ -n "$match" ]] || continue
 
-      local start=$(( len * win_start ))
-      local end=$(( len * win_end ))
-      (( end > start )) || continue
-
-      window="${line:start:end-start}"
-      window_left="${line:0:start}"
-      window_right="${line:end}"
+    if (( expand )); then
+      out_ref+=("$line_expanded")
+    else
+      out_ref+=("$line")
     fi
-
-    # match within window
-    [[ "$window" =~ $regex ]] || continue
-
-    # extract parts based on first full-line match
-    local match="${BASH_REMATCH[0]}"
-    local left="$window_left${window%%"$match"*}"
-    local right="${window#*"$match"}$window_right"
-
-    printf '%s%s%s%s%s\n' "$left" "$sep" "$match" "$sep" "$right"
   done
 
   return 0
 }
 
-# text_supports_match <regex> [--support RATIO] [--window START END]
-#
-# Detect whether a text exhibits a feature based on per-line match ratio.
-#
-# - --support RATIO
-#     Minimum ratio of matched lines (default: 0.6)
-#
-# - --window START END
-#     Restrict where a match may occur (relative range [0.0, 1.0])
-#
-# - return:
-#     0 if matched line ratio >= support
-#     1 otherwise
-#
-# Notes:
-# - Lines are trimmed before evaluation.
-# - Window semantics are consistent with text_filter_parts.
-text_supports_match() {
-  local regex=
-  local support=0.6
-  local win_start=
-  local win_end=
-
-  # first positional argument: regex
-  regex="$1"
-  shift || true
-  [[ -z "$regex" ]] && return 1
-
-  # parse options
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --support)
-        support="$2"
-        shift 2
-        ;;
-      --window)
-        win_start="$2"
-        win_end="$3"
-        shift 3
-        ;;
-      --)
-        shift
-        break
-        ;;
-      *)
-        # unknown option: ignore
-        shift
-        ;;
-    esac
-  done
-
-  local total=0
-  local hits=0
-
-  while IFS= read -r line; do
-    line="$(string_trim "$line")"
-    [[ -n "$line" ]] || continue
-
-    # decide match window: full line or window slice
-    local window="$line"
-
-    ((total++))
-
-    # apply window only if explicitly provided
-    if [[ -n "$win_start" && -n "$win_end" ]]; then
-      local len=${#line}
-      (( len > 0 )) || continue
-
-      local start=$(( len * win_start ))
-      local end=$(( len * win_end ))
-      (( end > start )) || continue
-
-      window="${line:start:end-start}"
-    fi
-
-    [[ "$window" =~ $regex ]] || continue
-    ((hits++))
-  done
-
-  [[ "$total" -eq 0 ]] && return 1
-
-  num_ratio_ge "$hits" "$total" "$support"
+# text_filter <regex> [from_ratio] [to_ratio] [expand]
+# Filter stdin lines by match condition.
+text_filter() {
+  local -a result=()
+  _text_filter result "$@"
+  printf '%s\n' "${result[@]}"
 }
 
+# text_supports <regex> [from_ratio] [to_ratio] [support]
+# Return 0 if match ratio >= support threshold.
+# No stdout.
+text_supports() {
+  local regex="${1:?text_supports: missing regex}"
+  local win_from_ratio="${2:-0}"
+  local win_to_ratio="${3:-1}"
+  local support="${4:-0.6}"
+ 
+  # --- Process lines ---
+  local total=0 hits=0
+  local line line_expanded
+  local left match right
 
+  while IFS= read -r line; do
+    (( total++ ))
+    [[ -n "$line" ]] || continue
 
+    _string_expand line_expanded \
+      "$line" "$regex" "$win_from_ratio" "$win_to_ratio"
 
+    IFS="$__TEXT_SEP" read -r left match right <<< "$line_expanded"
+    [[ -n "$match" ]] || continue
+    (( hits++ ))
+  done
 
+  (( total == 0 )) && return 1
 
+  # support ratio check
+  # hits / total >= support
+  num_ratio_cmp "$hits" "$total" ge "$support"
+}
 
+# text_lines_count
+# Print number of stdin lines.
+text_lines_count() {
+  local n
+  n=$(wc -l)
+  printf '%s\n' "${n//[[:space:]]/}"
+}
 
+# text_unique_count
+# Print number of unique stdin lines.
+text_unique_count() {
+  local n
+  n=$(sort -u | wc -l)
+  printf '%s\n' "${n//[[:space:]]/}"
+}
+
+# array_unique_count <arr_ref>
+# Print number of unique elements in array.
+array_unique_count() {
+  local -n arr_ref="$1"
+  local -A seen=()
+  local v
+  for v in "${arr_ref[@]}"; do
+    seen["$v"]=1
+  done
+  printf '%s\n' "${#seen[@]}"
+}
+
+# text_to_array <out_ref> [sep] [col]
+# Read stdin into array.
+# Without sep/col: each line is an element.
+# With sep + col (1-based): extract specified column.
+# Out-of-range column yields empty string.
+# Result written to <out_ref>.
+text_to_array() {
+  local -n out_ref="$1"
+  local sep="$2"
+  local col="$3"
+
+  local -a original=()
+  local line
+  while IFS= read -r line; do
+    original+=("$line")
+  done
+
+  [[ -n "$sep" && -n "$col" ]] || { 
+    out_ref=("${original[@]}"); 
+    return 0; 
+  }
+
+  num_is_int "$col" || return 1
+  (( col >= 1 )) || return 1
+
+  local idx=$((col - 1))
+  local -a fields=()
+  
+  out_ref=()
+  for line in "${original[@]}"; do
+    IFS="$sep" read -r -a fields <<< "$line"
+    if (( idx < ${#fields[@]} )); then
+      out_ref+=("${fields[idx]}")
+    else
+      out_ref+=('')
+    fi
+  done
+
+  return 0
+}

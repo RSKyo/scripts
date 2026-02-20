@@ -9,17 +9,19 @@
 __LETTER_SOURCED=1
 
 # Normalize user-friendly script names to Unicode Script
-__normalize_script() {
-  case "$1" in
-    latin|Latin)       echo Latin ;;
-    han|Han|cjk|CJK)   echo Han ;;
-    hira|hiragana)     echo Hiragana ;;
-    kata|katakana)     echo Katakana ;;
-    hangul|kr|korean)  echo Hangul ;;
-    greek)             echo Greek ;;
-    cyrillic)          echo Cyrillic ;;
-    arabic)            echo Arabic ;;
-    *)                 return 1 ;;
+__normalize_script_into() {
+  local -n out="$1"
+  local name="$2"
+  case "$name" in
+    latin|Latin)       out=Latin ;;
+    han|Han|cjk|CJK)   out=Han ;;
+    hira|hiragana)     out=Hiragana ;;
+    kata|katakana)     out=Katakana ;;
+    hangul|kr|korean)  out=Hangul ;;
+    greek)             out=Greek ;;
+    cyrillic)          out=Cyrillic ;;
+    arabic)            out=Arabic ;;
+    *)                 out=Arabic ;;
   esac
 }
 
@@ -44,17 +46,20 @@ letter_count() {
 letter_script_count() {
   local text="$1"
   local script
-  script="$(__normalize_script "$2")" || return 1
+  __normalize_script_into script "$2"
 
   __perl '
-    use strict; use warnings;
+    use strict;
+    use warnings;
+    use utf8;
+    use open qw(:std :utf8);
 
-    my ($script) = @ARGV;
+    my $script = shift @ARGV;
     my $s = join("", <>);
     my $count = 0;
 
     foreach my $ch (split(//, $s)) {
-      $count++ if $ch =~ /\p{Script=$script}/;
+      $count++ if $ch =~ /\p{Script=\Q$script\E}/;
     }
 
     print $count;
@@ -65,12 +70,15 @@ letter_script_count() {
 letter_script_ratio() {
   local text="$1"
   local script
-  script="$(__normalize_script "$2")" || return 1
+  __normalize_script_into script "$2"
 
   __perl '
-    use strict; use warnings;
+    use strict;
+    use warnings;
+    use utf8;
+    use open qw(:std :utf8);
 
-    my ($script) = @ARGV;
+    my $script = shift @ARGV;
     my $s = join("", <>);
 
     my $total  = 0;

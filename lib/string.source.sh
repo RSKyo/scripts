@@ -1,123 +1,118 @@
 #!/usr/bin/env bash
-# String manipulation utilities for shell scripts.
-# Provides functions for trimming, substring extraction, regex matching, normalization, and random string generation.
-# Author: Zhang Hao
-# Email:  
-# License: MIT 
-# Usage:
-#   source string.source.sh # to load the functions into your script.
-# Note: These functions are designed to be POSIX-compliant and should work in any POSIX-compatible shell, including bash, sh, and zsh.
-# Functions:
-#   - string_trim <string>
-#   - string_slice <string> <start> [end]
-#   - string_search <string> <regex>
-#   - string_normalize <string>
-#   - string_random [length] 
+# string.source.sh
+# String utilities.
+# - _string_* : parameter-based primitives (nameref output)
+# - string_*  : stream wrappers (stdin → stdout)
+# - All indices are 1-based and inclusive.
 
-
+# shellcheck disable=SC1091,SC2034
 
 # Prevent multiple sourcing
 [[ -n "${__STRING_SOURCED+x}" ]] && return 0
 __STRING_SOURCED=1
 
-# string_trim <string>
-# Trim leading and trailing whitespace from a string.
-# - stdout: trimmed string
-# - return: always 0
+# Internal field separator.
+readonly __STRING_SEP=$'\x1f'
+
+# Dependencies (bootstrap must be sourced by the entry script)
+source "$LIB_DIR/num.source.sh"
+
+# _string_trim <out_ref> <input>
+# Trim leading and trailing whitespace.
+# Result written to <out_ref>.
+_string_trim() {
+  local -n out_ref="$1"
+  local input="$2"
+
+  [[ -n "$input" ]] || { out_ref=''; return 0; }
+
+  input="${input#"${input%%[![:space:]]*}"}"
+  input="${input%"${input##*[![:space:]]}"}"
+
+  out_ref="$input"
+}
+
+# string_trim
+# Trim whitespace for each stdin line.
 string_trim() {
-  local text="$1"
-  [[ -n "$text" ]] || return 0
-
-  text="${text#"${text%%[![:space:]]*}"}"
-  text="${text%"${text##*[![:space:]]}"}"
-
-  printf '%s\n' "$text"
+  local result line
+  while IFS= read -r line; do
+    _string_trim result "$line"
+    printf '%s\n' "$result"
+  done
 }
 
-# string_slice <string> <start> [end]
-# Extract a substring from a string.
-# - <start> is 1-based index of the first character to include
-# - <end> is 1-based index of the last character to include (optional)
-# - stdout: extracted substring
-# - return: always 0
+# _string_slice <out_ref> <input> <start> <end>
+# Extract substring by 1-based inclusive indices.
+# Out-of-range indices are normalized.
+_string_slice() {
+  local -n out_ref="$1"
+  local input="$2"
+  local start="$3"
+  local end="$4"
+
+  [[ -n "$input" ]] || { out_ref=''; return 0; }
+
+  local len=${#input}
+  { num_is_int "$start" && num_between "$start" 1 "$len"; } || start=1
+  { num_is_int "$end"   && num_between "$end"   1 "$len"; } || end="$len"
+  (( start <= end )) || { out_ref=''; return 0; }
+
+  out_ref="${input:$((start - 1)):$((end - start + 1))}"
+}
+
+# string_slice <start> <end>
+# Apply slice to each stdin line.
 string_slice() {
-  local text="$1"
-  local start="$2"
-  local end="$3"
-
-  [[ -n "$text" ]] || return 0
-  [[ "$start" =~ ^[0-9]+$ ]] || { printf '%s\n' "$text"; return 0; }
-
-  (( start < 1 )) && start=1
-  local offset=$((start - 1))
-
-  if [[ -z "$end" ]]; then
-    printf '%s\n' "${text:$offset}"
-    return 0
-  fi
-
-  [[ "$end" =~ ^[0-9]+$ ]] || { printf '%s\n' "${text:$offset}"; return 0; }
-  (( end < start )) && { printf '%s\n' ""; return 0; }
-
-  local length=$((end - start + 1))
-  printf '%s\n' "${text:$offset:$length}"
+  local result line
+  while IFS= read -r line; do
+    _string_slice result "$line" "$@"
+    printf '%s\n' "$result"
+  done
 }
 
-# string_search <string> <regex>
-# Find the index of the first match of a regex in a string.
-# - stdout: 0-based index of the first match, or empty if no match
-# - return: always 0
-string_search() {
-  local text="$1"
-  local regex="$2"
+# _string_normalize <out_ref> <input>
+# Replace filesystem-reserved characters with space,
+# collapse duplicate spaces, and trim.
+_string_normalize() {
+  local -n out_ref="$1"
+  local input="$2"
 
-  __perl '
-    use strict;
-    use warnings;
-    use utf8;
+  [[ -n "$input" ]] || { out_ref=''; return 0; }
 
-    my ($s, $re) = @ARGV;
+  input="${input//\\/ }"
+  input="${input//\// }"
+  input="${input//:/ }"
+  input="${input//\*/ }"
+  input="${input//\?/ }"
+  input="${input//\"/ }"
+  input="${input//</ }"
+  input="${input//>/ }"
+  input="${input//|/ }"
 
-    if ($s =~ /$re/) {
-      print $-[0];
-    }
-  ' "$text" "$regex"
-
-  return 0
-}
-
-# string_normalize <string>
-# Normalize a string by replacing certain characters with spaces and collapsing multiple spaces.
-# - stdout: normalized string
-# - return: always 0
-string_normalize() {
-  local text="$1"
-  [[ -n "$text" ]] || return 0
-
-  text="${text//\\/ }"
-  text="${text//\// }"
-  text="${text//:/ }"
-  text="${text//\*/ }"
-  text="${text//\?/ }"
-  text="${text//\"/ }"
-  text="${text//</ }"
-  text="${text//>/ }"
-  text="${text//|/ }"
-
-  while [[ "$text" == *"  "* ]]; do
-    text="${text//  / }"
+  while [[ "$input" == *"  "* ]]; do
+    input="${input//  / }"
   done
 
-  text="${text#"${text%%[![:space:]]*}"}"
-  text="${text%"${text##*[![:space:]]}"}"
+  input="${input#"${input%%[![:space:]]*}"}"
+  input="${input%"${input##*[![:space:]]}"}"
 
-  printf '%s\n' "$text"
+  out_ref="$input"
+}
+
+# string_normalize
+# Normalize each stdin line.
+string_normalize() {
+  local result line
+  while IFS= read -r line; do
+    _string_normalize result "$line"
+    printf '%s\n' "$result"
+  done
 }
 
 # string_random [length]
-# Generate a random alphanumeric string of the specified length (default: 8).
-# - stdout: random string
-# - return: always 0
+# Generate random alphanumeric string.
+# Default length: 8.
 string_random() {
   local len="${1:-8}"
 
@@ -128,3 +123,76 @@ string_random() {
   printf '\n'
 }
 
+# _string_expand <out_ref> <input> <regex> [from_ratio] [to_ratio]
+# Match within ratio-defined window and split into:
+#   left <SEP> match <SEP> right
+# Window ratios range from 0 to 1.
+# Result written to <out_ref>.
+_string_expand() {
+  local -n out_ref="$1"
+  local input="${2?_string_expand: missing input}"
+  local regex="${3:?_string_expand: missing regex}"
+  local win_from_ratio="$4"
+  local win_to_ratio="$5"
+
+  
+  [[ -n "$input" ]] || {
+    printf -v out_ref '%s%s%s%s%s' \
+    '' "$__STRING_SEP" '' "$__STRING_SEP" ''
+    return 0
+  }
+
+  # Normalize ratio range.
+  if [[ -z "$win_from_ratio" ]] || 
+     ! num_between "$win_from_ratio" 0 1 || 
+     num_cmp "$win_from_ratio" eq 1; then
+    win_from_ratio=0
+  fi
+
+  if [[ -z "$win_to_ratio" ]] || 
+     ! num_between "$win_to_ratio" 0 1 || 
+     num_cmp "$win_to_ratio" eq 0; then
+    win_to_ratio=1
+  fi
+
+  num_cmp "$win_from_ratio" lt "$win_to_ratio" || {
+    win_from_ratio=0
+    win_to_ratio=1
+  }
+
+  # Convert ratios to positions
+  local len=${#input}
+  local win_from_pos win_to_pos 
+  local win_left win win_right
+  local left="$input" match='' right=''
+
+  _num_product win_from_pos "$len" "$win_from_ratio" 0
+  _num_product win_to_pos   "$len" "$win_to_ratio"   0
+
+  # Match within window and split.
+  if (( win_from_pos < win_to_pos )) ; then
+    win_left="${input:0:win_from_pos}"
+    win="${input:win_from_pos:win_to_pos-win_from_pos}"
+    win_right="${input:win_to_pos}"
+     if [[ -n "$win" && "$win" =~ $regex ]]; then
+        match="${BASH_REMATCH[0]}"
+        left="$win_left${win%%"$match"*}"
+        right="${win#*"$match"}$win_right"
+      fi
+  fi
+
+  printf -v out_ref '%s%s%s%s%s' \
+    "$left" "$__STRING_SEP" "$match" "$__STRING_SEP" "$right"
+
+  return 0
+}
+
+# string_expand <regex> [win_from_ratio] [win_to_ratio]
+# Apply expand to each stdin line.
+string_expand() {
+  local result line
+  while IFS= read -r line; do
+    _string_expand result "$line" "$@"
+    printf '%s\n' "$result"
+  done
+}

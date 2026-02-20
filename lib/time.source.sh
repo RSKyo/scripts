@@ -1,162 +1,130 @@
 #!/usr/bin/env bash
+# time.source.sh
+# Time utilities for matching, parsing, formatting,
+# and unit conversion between ms, s, m, h.
+#
+# Design philosophy:
+# - Contract-based: assumes valid input where specified.
+# - Matching functions return 1 on failure.
+# - Conversion/formatting functions always return 0.
+# - No defensive validation unless explicitly stated.
 
-# -------------------------------------------------
 # Prevent multiple sourcing
-# -------------------------------------------------
 [[ -n "${__TIME_SOURCED+x}" ]] && return 0
 __TIME_SOURCED=1
 
-# -----------------------------------------------------------------------------
-# time_format_s_to_mmss
-#
-# Convert integer seconds to "mm:ss".
-# - Minutes are not capped (e.g., 3723s -> "62:03").
-#
-# Usage:
-#   time_format_s_to_mmss 0      -> 00:00
-#   time_format_s_to_mmss 201    -> 03:21
-#   time_format_s_to_mmss 3723   -> 62:03
-# -----------------------------------------------------------------------------
-time_format_s_to_mmss() {
-  local s="${1:-0}"
+# Match mm:ss or hh:mm:ss
+readonly __TIME_TIMESTAMP_REGEX='[0-9]+[[:space:]]*:[[:space:]]*[0-5][0-9]([[:space:]]*:[[:space:]]*[0-5][0-9])?'
 
-  # Clamp negative to 0
-  if [[ "$s" =~ ^- ]]; then s=0; fi
+# Time unit scales (base: milliseconds)
+readonly __TIME_SCALE_ms=1
+readonly __TIME_SCALE_s=1000
+readonly __TIME_SCALE_m=$((60*1000))
+readonly __TIME_SCALE_h=$((3600*1000))
 
-  local m=$(( s / 60 ))
-  local r=$(( s % 60 ))
+# _time_match <out_ref> <text>
+# Extract the first timestamp (mm:ss or hh:mm:ss) from <text>.
+# Returns 0 if matched, 1 otherwise.
+_time_match() {
+  local -n out_ref="$1"
+  local text="$2"
 
-  printf '%02d:%02d\n' "$m" "$r"
+  [[ "$text" =~ $__TIME_TIMESTAMP_REGEX ]] || return 1
+  out_ref="${BASH_REMATCH[0]}"
 }
 
-# -----------------------------------------------------------------------------
-# time_format_s_to_hhmmss
-#
-# Convert integer seconds to "hh:mm:ss".
-# - Hours can be >= 0, minutes and seconds are 00-59.
-#
-# Usage:
-#   time_format_s_to_hhmmss 0      -> 00:00:00
-#   time_format_s_to_hhmmss 3723   -> 01:02:03
-# -----------------------------------------------------------------------------
-time_format_s_to_hhmmss() {
-  local s="${1:-0}"
+# time_match <text>
+# Print the first matched timestamp.
+# Returns 0 if matched, 1 otherwise.
+time_match() {
+  local result
+  _time_match result "$@" || return 1
+  printf '%s\n' "$result"
+}
 
-  # Clamp negative to 0
-  if [[ "$s" =~ ^- ]]; then s=0; fi
+# _time_s_to_hms <out_ref> <seconds> [hour_width]
+# Convert seconds to a formatted time string.
+# - If hour_width > 0, always output h:mm:ss with minimum hour padding.
+# - Otherwise, output h:mm:ss when hour > 0, or mm:ss if hour == 0.
+# Assumes <seconds> is a valid integer.
+# Always returns 0.
+_time_s_to_hms() {
+  local -n out_ref="$1"
+  local s="${2:-0}"
+  local hw="${3:-0}"
 
   local h=$(( s / 3600 ))
-  local rem=$(( s % 3600 ))
-  local m=$(( rem / 60 ))
-  local r=$(( rem % 60 ))
+  local m=$(( (s % 3600) / 60 ))
+  local r=$(( s % 60 ))
 
-  printf '%02d:%02d:%02d\n' "$h" "$m" "$r"
-}
-
-# -----------------------------------------------------------------------------
-# time_format_s_to_auto
-#
-# Convert integer seconds to:
-#   - "mm:ss" when < 3600
-#   - "hh:mm:ss" when >= 3600
-#
-# Usage:
-#   time_format_s_to_auto 201    -> 03:21
-#   time_format_s_to_auto 3723   -> 01:02:03
-# -----------------------------------------------------------------------------
-time_format_s_to_auto() {
-  local s="${1:-0}"
-
-  # Clamp negative to 0
-  if [[ "$s" =~ ^- ]]; then s=0; fi
-
-  if (( s >= 3600 )); then
-    time_format_s_to_hhmmss "$s"
+  if (( hw > 0 )); then
+    printf -v out_ref "%0*d:%02d:%02d" "$hw" "$h" "$m" "$r"
+  elif (( h > 0 )); then
+    printf -v out_ref "%d:%02d:%02d" "$h" "$m" "$r"
   else
-    time_format_s_to_mmss "$s"
+    printf -v out_ref "%02d:%02d" "$m" "$r"
   fi
 }
 
-# -----------------------------------------------------------------------------
-# time_parse_hms_to_s
-#
-# Parse "mm:ss" or "hh:mm:ss" into integer seconds.
-#
-# Usage:
-#   time_parse_hms_to_s "03:21"     -> 201
-#   time_parse_hms_to_s "1:02:03"   -> 3723
-#
-# Output:
-#   - seconds (integer) to stdout
-# Return:
-#   - 0 always (prints 0 for empty input)
-# -----------------------------------------------------------------------------
-time_parse_hms_to_s() {
-  local t="${1:-}"
-  local IFS=":"
-  local h m s
+# time_s_to_hms <seconds> [hour_width]
+# Print formatted time string converted from seconds.
+# Always returns 0.
+time_s_to_hms() {
+  local result
+  _time_s_to_hms result "$@"
+  printf '%s\n' "$result"
+}
 
-  [[ -z "$t" ]] && { printf '0\n'; return 0; }
+# _time_hms_to_s <out_ref> <hms>
+# Convert mm:ss or hh:mm:ss to total seconds.
+# Assumes <hms> is a valid time string.
+# Always returns 0.
+_time_hms_to_s() {
+  local -n out_ref="$1"
+  local t="$2"
 
-  # Supports mm:ss / hh:mm:ss
-  read -r h m s <<< "$t"
+  local parts=()
+  IFS=: read -r -a parts <<< "$t"
 
-  if [[ -z "${s:-}" ]]; then
-    # mm:ss
-    printf '%d\n' $((10#$h * 60 + 10#$m))
+  if (( ${#parts[@]} == 3 )); then
+    out_ref=$(( 10#${parts[0]} * 3600 + 10#${parts[1]} * 60 + 10#${parts[2]} ))
   else
-    # hh:mm:ss
-    printf '%d\n' $((10#$h * 3600 + 10#$m * 60 + 10#$s))
+    out_ref=$(( 10#${parts[0]} * 60 + 10#${parts[1]} ))
   fi
 }
 
-# -----------------------------------------------------------------------------
-# milliseconds <-> seconds
-# -----------------------------------------------------------------------------
-
-time_unit_ms_to_s() {
-  local ms="$1"
-  [[ -z "$ms" ]] && return 0
-  # integer division, truncate
-  printf '%d\n' $(( ms / 1000 ))
+# time_hms_to_s <hms>
+# Print total seconds converted from time string.
+# Always returns 0.
+time_hms_to_s() {
+  local result
+  _time_hms_to_s result "$@"
+  printf '%s\n' "$result"
 }
 
-time_unit_s_to_ms() {
-  local s="$1"
-  [[ -z "$s" ]] && return 0
-  printf '%d\n' $(( s * 1000 ))
+# _time_convert <out_ref> <value> <from_unit> <to_unit>
+# Convert time value between units: ms, s, m, h.
+# Units must correspond to defined scale constants.
+# Assumes units are valid.
+# Always returns 0.
+_time_convert() {
+  local -n out_ref="$1"
+  local value="$2"
+  local from="$3"
+  local to="$4"
+
+  local from_scale="__TIME_SCALE_${from}"
+  local to_scale="__TIME_SCALE_${to}"
+
+  # shellcheck disable=SC2034
+  out_ref=$(( value * ${!from_scale} / ${!to_scale} ))
 }
 
-# -----------------------------------------------------------------------------
-# seconds <-> minutes
-# -----------------------------------------------------------------------------
-
-time_unit_min_to_s() {
-  local min="$1"
-  [[ -z "$min" ]] && return 0
-  printf '%d\n' $(( min * 60 ))
-}
-
-time_unit_s_to_min() {
-  local s="$1"
-  [[ -z "$s" ]] && return 0
-  # integer division, truncate
-  printf '%d\n' $(( s / 60 ))
-}
-
-# -----------------------------------------------------------------------------
-# seconds <-> hours
-# -----------------------------------------------------------------------------
-
-time_unit_h_to_s() {
-  local h="$1"
-  [[ -z "$h" ]] && return 0
-  printf '%d\n' $(( h * 3600 ))
-}
-
-time_unit_s_to_h() {
-  local s="$1"
-  [[ -z "$s" ]] && return 0
-  # integer division, truncate
-  printf '%d\n' $(( s / 3600 ))
+# time_convert <value> <from_unit> <to_unit>
+# Print converted time value between units.
+# Always returns 0.
+time_convert() {
+  local result
+  _time_convert result "$@"
+  printf '%s\n' "$result"
 }
