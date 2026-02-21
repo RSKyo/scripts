@@ -17,68 +17,101 @@ readonly __STRING_SEP=$'\x1f'
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/num.source.sh"
 
-# _string_trim <out_ref> <input>
-# Trim leading and trailing whitespace.
-# Result written to <out_ref>.
-_string_trim() {
-  local -n out_ref="$1"
-  local input="$2"
+# -------------------------------------------------
+# Internal Helpers (name-ref only)
+# -------------------------------------------------
 
-  [[ -n "$input" ]] || { out_ref=''; return 0; }
+# __string_match_expand <out_var> <input> <regex> <from_idx> <to_idx>
+# Core matcher (internal use).
+# - Slice input using half-open boundary indices [from_idx, to_idx).
+# - Search regex within the sliced window.
+# - Output formatted string: left<SEP>match<SEP>right
+# - out_var is a nameref target.
+__string_match_expand() {
+  local -n out="$1"
+  local input="$2"
+  local regex="$3"
+  local from_idx="$4"
+  local to_idx="$5"
+
+  local sep="$__STRING_SEP"
+  local prefix window suffix
+  local left="$input" match='' right=''
+
+  if (( from_idx < to_idx )); then
+    prefix="${input:0:from_idx}"
+    window="${input:from_idx:to_idx-from_idx}"
+    suffix="${input:to_idx}"
+
+    if [[ -n "$window" && "$window" =~ $regex ]]; then
+      match="${BASH_REMATCH[0]}"
+      left="$prefix${window%%"$match"*}"
+      right="${window#*"$match"}$suffix"
+    fi
+  fi
+
+  printf -v out '%s%s%s%s%s' "$left" "$sep" "$match" "$sep" "$right"
+}
+
+# __string_match_expand_into <out_var> <input> <regex> <from_idx> <to_idx>
+# Safe wrapper for __string_match_expand.
+# - Isolates internal variable names to avoid nameref collisions.
+# - Writes result into out_var.
+__string_match_expand_into() {
+  local -n out="$1"
+  local __string_match_expand_input="$2"
+  local __string_match_expand_regex="$3"
+  local __string_match_expand_from_idx="$4"
+  local __string_match_expand_to_idx="$5"
+
+  local __string_match_out
+
+  __string_match_expand __string_match_out \
+    "$__string_match_expand_input" \
+    "$__string_match_expand_regex" \
+    "$__string_match_expand_from_idx" \
+    "$__string_match_expand_to_idx"
+  
+  # shellcheck disable=SC2034
+  out="$__string_match_out"
+}
+
+# -------------------------------------------------
+# Public API (stdout interface)
+# -------------------------------------------------
+
+# string_trim <input>
+# Trim leading and trailing whitespace.
+string_trim() {
+  local input="${1-}"
 
   input="${input#"${input%%[![:space:]]*}"}"
   input="${input%"${input##*[![:space:]]}"}"
 
-  out_ref="$input"
+  printf '%s\n' "$input"
 }
 
-# string_trim
-# Trim whitespace for each stdin line.
-string_trim() {
-  local result line
-  while IFS= read -r line; do
-    _string_trim result "$line"
-    printf '%s\n' "$result"
-  done
-}
-
-# _string_slice <out_ref> <input> <start> <end>
+# string_slice <input> <start> <end>
 # Extract substring by 1-based inclusive indices.
-# Out-of-range indices are normalized.
-_string_slice() {
-  local -n out_ref="$1"
-  local input="$2"
-  local start="$3"
-  local end="$4"
-
-  [[ -n "$input" ]] || { out_ref=''; return 0; }
-
-  local len=${#input}
-  { num_is_int "$start" && num_between "$start" 1 "$len"; } || start=1
-  { num_is_int "$end"   && num_between "$end"   1 "$len"; } || end="$len"
-  (( start <= end )) || { out_ref=''; return 0; }
-
-  out_ref="${input:$((start - 1)):$((end - start + 1))}"
-}
-
-# string_slice <start> <end>
-# Apply slice to each stdin line.
 string_slice() {
-  local result line
-  while IFS= read -r line; do
-    _string_slice result "$line" "$@"
-    printf '%s\n' "$result"
-  done
+  local input="${1-}"
+  local start="${2-1}"
+  local end="${3-${#input}}"
+
+  num_is_pos_int "$start" || return 1
+  num_is_pos_int "$end" || return 1
+  
+  local offset=$((start - 1))
+  local length=$((end - start + 1))
+
+  printf '%s\n' "${input:offset:length}"
 }
 
-# _string_normalize <out_ref> <input>
+# string_normalize <input>
 # Replace filesystem-reserved characters with space,
 # collapse duplicate spaces, and trim.
-_string_normalize() {
-  local -n out_ref="$1"
-  local input="$2"
-
-  [[ -n "$input" ]] || { out_ref=''; return 0; }
+string_normalize() {
+  local input="${1-}"
 
   input="${input//\\/ }"
   input="${input//\// }"
@@ -97,102 +130,83 @@ _string_normalize() {
   input="${input#"${input%%[![:space:]]*}"}"
   input="${input%"${input##*[![:space:]]}"}"
 
-  out_ref="$input"
+  printf '%s\n' "$input"
 }
 
-# string_normalize
-# Normalize each stdin line.
-string_normalize() {
-  local result line
-  while IFS= read -r line; do
-    _string_normalize result "$line"
-    printf '%s\n' "$result"
-  done
-}
-
-# string_random [length]
-# Generate random alphanumeric string.
-# Default length: 8.
+# string_random <len>
+# Generate a pseudo-random alphanumeric string.
+# - len: positive integer length (default: 8)
+# - Character set: A–Z a–z 0–9
+# - Random source: num_random_int32 (pseudo-random, not secure)
+# - stdout: generated string
 string_random() {
   local len="${1:-8}"
+  local chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  local max=${#chars}
+  local result=''
+  local i r
 
-  [[ "$len" =~ ^[0-9]+$ ]] || len=8
-  (( len > 0 )) || len=8
+  num_is_pos_int "$len" || len=8
 
-  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$len"
-  printf '\n'
+  for (( i=0; i<len; i++ )); do
+    r=$(num_random_int32)
+    result+="${chars:r%max:1}"
+  done
+
+  printf '%s\n' "$result"
 }
 
-# _string_expand <out_ref> <input> <regex> [from_ratio] [to_ratio]
-# Match within ratio-defined window and split into:
-#   left <SEP> match <SEP> right
-# Window ratios range from 0 to 1.
-# Result written to <out_ref>.
-_string_expand() {
-  local -n out_ref="$1"
-  local input="${2?_string_expand: missing input}"
-  local regex="${3:?_string_expand: missing regex}"
-  local win_from_ratio="$4"
-  local win_to_ratio="$5"
+# string_expand <input> <regex> [from_ratio] [to_ratio]
+# Return structured result: left<SEP>match<SEP>right.
+# Window is defined by ratio range (default 0–1).
+string_expand() {
+  local input="${1-}"
+  local regex="${2:?string_expand: missing regex}"
+  local win_from_ratio="${3:-0}"
+  local win_to_ratio="${4:-1}"
+  local sep="$__STRING_SEP"
 
-  
-  [[ -n "$input" ]] || {
-    printf -v out_ref '%s%s%s%s%s' \
-    '' "$__STRING_SEP" '' "$__STRING_SEP" ''
+  if [[ -z "$input" ]]; then 
+    printf '%s%s%s%s%s\n' '' "$sep" '' "$sep" ''
     return 0
-  }
-
-  # Normalize ratio range.
-  if [[ -z "$win_from_ratio" ]] || 
-     ! num_between "$win_from_ratio" 0 1 || 
-     num_cmp "$win_from_ratio" eq 1; then
-    win_from_ratio=0
   fi
 
-  if [[ -z "$win_to_ratio" ]] || 
-     ! num_between "$win_to_ratio" 0 1 || 
-     num_cmp "$win_to_ratio" eq 0; then
-    win_to_ratio=1
-  fi
-
+  # Normalize ratios
+  num_between "$win_from_ratio" 0 1 --right-open || win_from_ratio=0
+  num_between "$win_to_ratio" 0 1 --left-open || win_to_ratio=1
   num_cmp "$win_from_ratio" lt "$win_to_ratio" || {
     win_from_ratio=0
     win_to_ratio=1
   }
 
-  # Convert ratios to positions
   local len=${#input}
-  local win_from_pos win_to_pos 
-  local win_left win win_right
-  local left="$input" match='' right=''
+  local from_boundary to_boundary expanded
 
-  _num_product win_from_pos "$len" "$win_from_ratio" 0
-  _num_product win_to_pos   "$len" "$win_to_ratio"   0
+  from_boundary=$(num_product "$len" "$win_from_ratio" 0)
+  to_boundary=$(num_product "$len" "$win_to_ratio" 0)
+  
+  __string_match_expand_into expanded \
+      "$input" "$regex" "$from_boundary" "$to_boundary"
 
-  # Match within window and split.
-  if (( win_from_pos < win_to_pos )) ; then
-    win_left="${input:0:win_from_pos}"
-    win="${input:win_from_pos:win_to_pos-win_from_pos}"
-    win_right="${input:win_to_pos}"
-     if [[ -n "$win" && "$win" =~ $regex ]]; then
-        match="${BASH_REMATCH[0]}"
-        left="$win_left${win%%"$match"*}"
-        right="${win#*"$match"}$win_right"
-      fi
-  fi
-
-  printf -v out_ref '%s%s%s%s%s' \
-    "$left" "$__STRING_SEP" "$match" "$__STRING_SEP" "$right"
-
+  printf '%s\n' "$expanded"
+  
   return 0
 }
 
-# string_expand <regex> [win_from_ratio] [win_to_ratio]
-# Apply expand to each stdin line.
-string_expand() {
-  local result line
-  while IFS= read -r line; do
-    _string_expand result "$line" "$@"
-    printf '%s\n' "$result"
-  done
+# string_match <input> <regex> [from_ratio] [to_ratio]
+# Return first matched substring within ratio window.
+# Internally uses string_expand.
+string_match() {
+  local input="${1-}"
+  local regex="${2:?string_expand: missing regex}"
+  local win_from_ratio="${3:-0}"
+  local win_to_ratio="${4:-1}"
+  local sep="$__STRING_SEP"
+
+  local expanded match _
+  expanded=$(string_expand "$input" "$regex" "$win_from_ratio" "$win_to_ratio")
+  IFS="$sep" read -r _ match _ <<< "$expanded"
+
+  printf '%s\n' "$match"
 }
+

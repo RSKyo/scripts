@@ -2,8 +2,10 @@
 # num.source.sh
 # Fixed-point numeric utilities for Bash.
 # All arithmetic uses integer scaling.
+# Default internal precision: 6 decimal places.
+# Designed for moderate numeric ranges within 64-bit limits.
 
-# shellcheck disable=SC2034
+
 
 # Prevent multiple sourcing
 [[ -n "${__NUM_SOURCED+x}" ]] && return 0
@@ -12,112 +14,232 @@ __NUM_SOURCED=1
 # Internal calculation scale.
 __NUM_CALC_SCALE=6
 
-# __num_scaled <out_ref> <value>
-# Convert decimal string to scaled integer.
+# -------------------------------------------------
+# Internal Helpers (name-ref only)
+# -------------------------------------------------
+
+# __num_scaled <out_ref> <decimal>
+# Convert decimal string to internal fixed-point integer.
+# - Uses __NUM_CALC_SCALE as calculation precision.
+# - Truncates extra fractional digits (no rounding).
+# - Supports negative values.
+# - Result written to <out_ref>.
 __num_scaled() {
-  local -n __out="$1"
-  local __v="$2"
+  local -n out="$1"
+  local value="$2"
   
-  local __cs="$__NUM_CALC_SCALE"
-  local __sign=1 __int __frac
+  local calc_scale="$__NUM_CALC_SCALE"
+  local sign=1
+  local integer fraction
+  local scaled
 
-  [[ $__v == -* ]] && { __sign=-1; __v="${__v#-}"; }
+  [[ $value == -* ]] && {
+    sign=-1
+    value="${value#-}"
+  }
 
-  IFS='.' read -r __int __frac <<< "$__v"
-  __int="${__int:-0}"
-  __frac="${__frac:0:$__cs}"
+  IFS='.' read -r integer fraction <<< "$value"
 
-  __out=$(( __int * 10**__cs ))
+  integer="${integer:-0}"
+  fraction="${fraction:0:$calc_scale}"
 
-  [[ -n $__frac ]] &&
-    __out=$(( __out + __frac * 10**(__cs - ${#__frac}) ))
+  scaled=$(( integer * 10**calc_scale ))
 
-  __out=$(( __sign * __out ))
+  if [[ -n $fraction ]]; then
+    scaled=$(( scaled + fraction * 10**(calc_scale - ${#fraction}) ))
+  fi
+
+  # shellcheck disable=SC2034
+  out=$(( sign * scaled ))
+}
+
+# __num_scaled_into <out_ref> <decimal>
+# Safe wrapper for __num_scaled.
+# - Isolates name-reference scope.
+# - Prevents variable collisions.
+# - Result written to <out_ref>.
+__num_scaled_into() {
+  local -n out="$1"
+  local __num_scaled_value="$2"
+  local __num_scaled_out
+
+  __num_scaled __num_scaled_out \
+    "$__num_scaled_value"
+  
+  # shellcheck disable=SC2034
+  out="$__num_scaled_out"
 }
 
 # __num_restored <out_ref> <scaled_int> [scale] [trim]
-# Convert __scaled integer to decimal string.
-# scale: output precision (default 3)
-# trim : 1=trim trailing zeros, 0=keep fixed digits
+# Restore internal fixed-point integer to decimal string.
+# - Adjusts from internal calculation scale to requested precision.
+# - Optionally trims trailing zeros in fractional part.
+# - Supports negative values.
+# - Result written to <out_ref>.
 __num_restored() {
-  local -n __out="$1"
-  local __v="$2"
-  local __s="${3:-3}"
-  local __t="${4:-1}"
-  
+  local -n out="$1"
+  local value="$2"
+  local scale="${3:-3}"
+  local trim="${4:-1}"
 
-  local __cs="$__NUM_CALC_SCALE"
-  local __sign=1 __int __frac
+  local calc_scale="$__NUM_CALC_SCALE"
+  local sign=1
+  local pow integer fraction
+  local restored
 
-  (( __v < 0 )) && { __sign=-1; __v=$(( -__v )); }
+  (( value < 0 )) && {
+    sign=-1
+    value=$(( -value ))
+  }
 
-  if (( __s == 0 )); then
-    if (( __cs > 0 )); then
-      __v=$(( __v / 10**__cs ))
-    fi
-    __out="$(( __sign * __v ))"
+  if (( scale == 0 )); then
+    value=$(( value / 10**calc_scale ))
+    out="$(( sign * value ))"
     return 0
   fi
 
-  # adjust scale
-  if (( __cs > __s )); then
-    __v=$(( __v / 10**(__cs - __s) ))
-  elif (( __cs < __s )); then
-    __v=$(( __v * 10**(__s - __cs) ))
+  # adjust internal scale to requested precision
+  if (( calc_scale > scale )); then
+    value=$(( value / 10**(calc_scale - scale) ))
+  elif (( calc_scale < scale )); then
+    value=$(( value * 10**(scale - calc_scale) ))
   fi
 
-  __int=$(( __v / 10**__s ))
-  __frac=$(printf "%0*d" "$__s" "$(( __v % 10**__s ))")
+  pow=$((10**scale))
+  integer=$(( value / pow ))
+  fraction=$(printf "%0*d" "$scale" "$(( value % pow ))")
 
-  if (( __t )); then
-    __frac="${__frac%"${__frac##*[!0]}"}"
-    __out="$(( __sign * __int ))${__frac:+.$__frac}"
-  else
-    __out="$(( __sign * __int )).$__frac"
+  if (( trim )); then
+    fraction="${fraction%"${fraction##*[!0]}"}"
   fi
+
+  restored="$(( sign * integer ))"
+  [[ -n $fraction ]] && restored+=".$fraction"
+
+  # shellcheck disable=SC2034
+  out="$restored"
+}
+
+# __num_restored_into <out_ref> <scaled_int> [scale] [trim]
+# Safe wrapper for __num_restored.
+# - Isolates name-reference scope.
+# - Prevents variable collisions.
+# - Result written to <out_ref>.
+__num_restored_into() {
+  local -n out="$1"
+  local __num_restored_value="$2"
+  local __num_restored_scale="${3:-3}"
+  local __num_restored_trim="${4:-1}"
+  local __num_restored_out
+
+  __num_restored __num_restored_out \
+    "$__num_restored_value" \
+    "$__num_restored_scale" \
+    "$__num_restored_trim"
+
+  # shellcheck disable=SC2034
+  out="$__num_restored_out"
+}
+
+# -------------------------------------------------
+# Public API (stdout interface)
+# -------------------------------------------------
+
+# num_like_int <value>
+# Return true if the string looks like a signed integer.
+num_like_zero() {
+  [[ $1 =~ ^(0(\.0*)?|\.[0]+)$ ]]
+}
+
+# num_like_zero <value>
+# True if string represents zero in loose form (e.g. 0, 0.0, .0).
+num_like_int() {
+  [[ $1 =~ ^-?[0-9]+$ ]]
+}
+
+# num_like_nonneg_int <value>
+# Return true if the string looks like a non-negative integer (>= 0).
+# Accepted forms: 0, 01, 0003
+num_like_nonneg_int() {
+  [[ $1 =~ ^[0-9]+$ ]]
+}
+
+# num_like_pos_int <value>
+# Return true if the string looks like a positive integer (> 0).
+# Accepted forms: 1, 10, 001
+num_like_pos_int() {
+  [[ $1 =~ ^[1-9][0-9]*$ ]]
 }
 
 # num_is_int <value>
-# True if unsigned integer.
+# Return true if signed integer.
 num_is_int() {
-  local value="$1"
-  [[ $value =~ ^[0-9]+$ ]]
+  [[ $1 =~ ^-?(0|[1-9][0-9]*)$ ]]
+}
+
+# num_is_nonneg_int <value>
+# Return true if non-negative integer (>= 0).
+num_is_nonneg_int() {
+  [[ $1 =~ ^(0|[1-9][0-9]*)$ ]]
+}
+
+# num_is_pos_int <value>
+# Return true if positive integer (> 0).
+num_is_pos_int() {
+  [[ $1 =~ ^[1-9][0-9]*$ ]]
 }
 
 # num_is_decimal <value>
-# True if signed decimal with fractional part.
+# Return true if signed decimal with fractional part.
 num_is_decimal() {
-  local value="$1"
-  [[ $value =~ ^-?[0-9]+\.[0-9]+$ ]]
+  [[ $1 =~ ^-?(0|[1-9][0-9]*)\.[0-9]+$ ]]
+}
+
+# num_is_nonneg_decimal <value>
+# Return true if non-negative decimal with fractional part (>= 0).
+num_is_nonneg_decimal() {
+  [[ $1 =~ ^(0|[1-9][0-9]*)\.[0-9]+$ ]]
+}
+
+# num_is_pos_decimal <value>
+# Return true if positive decimal with fractional part (> 0).
+num_is_pos_decimal() {
+  [[ $1 =~ ^(0|[1-9][0-9]*)\.[0-9]+$ && ! $1 =~ ^0\.0+$ ]]
 }
 
 # num_is_number <value>
-# True if signed integer or decimal.
+# Return true if signed integer or decimal.
 num_is_number() {
-  local value="$1"
-  [[ $value =~ ^-?[0-9]+(\.[0-9]+)?$ ]]
+  [[ $1 =~ ^-?(0|[1-9][0-9]*)(\.[0-9]+)?$ ]]
 }
 
-# _num_fixed <out_ref> <value> [scale] [trim]
-# Format number by truncation.
-_num_fixed() {
-  local -n __out="$1"
-  local __v="$2"
-  local __s="${3:-3}"
-  local __t="${4:-1}"
+# num_is_nonneg_number <value>
+# Return true if non-negative integer or decimal.
+num_is_nonneg_number() {
+  [[ $1 =~ ^(0|[1-9][0-9]*)(\.[0-9]+)?$ ]]
+}
 
-  local __scaled __restored
-  __num_scaled __scaled "$__v"
-  __num_restored __restored "$__scaled" "$__s" "$__t"
-  __out="$__restored"
+# num_is_pos_number <value>
+# Return true if positive integer or decimal.
+num_is_pos_number() {
+  [[ $1 =~ ^(0|[1-9][0-9]*)(\.[0-9]+)?$ && ! $1 =~ ^0(\.0+)?$ ]]
 }
 
 # num_fixed <value> [scale] [trim]
-# Public wrapper (stdout).
+# Format number with fixed precision by truncation.
+# - scale: decimal places (default 3)
+# - trim: remove trailing zeros if non-zero (default 1)
+# - Output printed to stdout.
 num_fixed() {
-  local fixed
-  _num_fixed fixed "$@"
-  printf '%s\n' "$fixed"
+  local value="$1"
+  local scale="${2:-3}"
+  local trim="${3:-1}"
+
+  local scaled restored
+  __num_scaled_into scaled "$value"
+  __num_restored_into restored "$scaled" "$scale" "$trim"
+
+  printf '%s\n' "$restored"
 }
 
 # ---------------------------------------
@@ -126,110 +248,75 @@ num_fixed() {
 # Public  : num_*
 # ---------------------------------------
 
-# _num_sum <out_ref> <a> <b> [scale]
-# a + b
-_num_sum() {
-  local -n __out="$1"
-  local __a="$2"
-  local __b="$3"
-  local __s="${4:-3}"
-
-  local __ai __bi __restored
-
-  __num_scaled __ai "$__a"
-  __num_scaled __bi "$__b"
-  __num_restored __restored "$(( __ai + __bi ))" "$__s"
-
-  __out="$__restored"
-}
-
 # num_sum <a> <b> [scale]
-# Public wrapper (stdout).
+# a + b
 num_sum() {
-  local sum
-  _num_sum sum "$@"
-  printf '%s\n' "$sum"
-}
+  local a="$1"
+  local b="$2"
+  local scale="${3:-3}"
 
-# _num_diff <out_ref> <a> <b> [scale]
-# a - b
-_num_diff() {
-  local -n __out="$1"
-  local __a="$2"
-  local __b="$3"
-  local __s="${4:-3}"
+  local ai bi sum restored
+  __num_scaled_into ai "$a"
+  __num_scaled_into bi "$b"
+  sum=$(( ai + bi ))
+  __num_restored_into restored "$sum" "$scale"
 
-  local __ai __bi __restored
-
-  __num_scaled __ai "$__a"
-  __num_scaled __bi "$__b"
-  __num_restored __restored "$(( __ai - __bi ))" "$__s"
-  
-  __out="$__restored"
+  printf '%s\n' "$restored"
 }
 
 # num_diff <a> <b> [scale]
-# Public wrapper (stdout).
+# a - b
 num_diff() {
-  local diff
-  _num_diff diff "$@"
-  printf '%s\n' "$diff"
-}
+  local a="$1"
+  local b="$2"
+  local scale="${3:-3}"
 
-# _num_product <out_ref> <a> <b> [scale]
-# a * b
-_num_product() {
-  local -n __out="$1"
-  local __a="$2"
-  local __b="$3"
-  local __s="${4:-3}"
-
-  local __ai __bi prod __product
-  local __cs="$__NUM_CALC_SCALE"
-
-  __num_scaled __ai "$__a"
-  __num_scaled __bi "$__b"
-  __num_restored __product "$(( __ai * __bi / 10**__cs ))" "$__s"
-
-  __out="$__product"
+  local ai bi diff restored
+  __num_scaled_into ai "$a"
+  __num_scaled_into bi "$b"
+  diff=$(( ai - bi ))
+  __num_restored_into restored "$diff" "$scale"
+  
+  printf '%s\n' "$restored"
 }
 
 # num_product <a> <b> [scale]
-# Public wrapper (stdout).
+# a * b
 num_product() {
-  local product
-  _num_product product "$@"
-  printf '%s\n' "$product"
-}
+  local a="$1"
+  local b="$2"
+  local scale="${3:-3}"
 
-# _num_quotient <out_ref> <a> <b> [scale]
-# a / b
-# Returns 1 if divisor is zero.
-_num_quotient() {
-  local -n __out="$1"
-  local __a="$2"
-  local __b="$3"
-  local __s="${4:-3}"
+  local ai bi prod restored
+  local cs="$__NUM_CALC_SCALE"
 
-  local __ai __bi __restored
-  local __cs="$__NUM_CALC_SCALE"
+  __num_scaled_into ai "$a"
+  __num_scaled_into bi "$b"
+  prod=$(( ai * bi / 10**cs ))
+  __num_restored_into restored "$prod" "$scale"
 
-  __num_scaled __ai "$__a"
-  __num_scaled __bi "$__b"
-
-  (( __bi == 0 )) && return 1
-
-  __num_restored __restored "$(( __ai * 10**__cs / __bi ))" "$__s"
-
-  __out="$__restored"
+  printf '%s\n' "$restored"
 }
 
 # num_quotient <a> <b> [scale]
-# Public wrapper (stdout).
+# a / b
+# Returns 1 if divisor is zero.
 num_quotient() {
-  local quotient
-  _num_quotient quotient "$@" || return 1
-  printf '%s\n' "$quotient"
+  local a="$1"
+  local b="$2"
+  local scale="${3:-3}"
+
+  local ai bi quot restored
+  local cs="$__NUM_CALC_SCALE"
+  __num_scaled_into ai "$a"
+  __num_scaled_into bi "$b"
+
+  (( bi == 0 )) && return 1
+
+  quot=$(( ai * 10**cs / bi ))
+  __num_restored_into restored "$quot" "$scale"
+
+  printf '%s\n' "$restored"
 }
 
 # num_cmp <a> <op> <b>
@@ -241,10 +328,13 @@ num_cmp() {
   local op="$2"
   local b="$3"
 
+  num_is_number "$a" || return 1
+  num_is_number "$b" || return 1
+
   local ai bi
 
-  __num_scaled ai "$a"
-  __num_scaled bi "$b"
+  __num_scaled_into ai "$a"
+  __num_scaled_into bi "$b"
 
   case "$op" in
     gt) (( ai >  bi )) ;;
@@ -257,68 +347,45 @@ num_cmp() {
   esac
 }
 
-# num_between <value> <lo> <hi>
-# True if lo <= value <= hi.
+# num_between <value> <lo> <hi> [--left-open] [--right-open]
+# True if value is in range (default [lo, hi]).
+# --left-open  => (lo, hi]
+# --right-open => [lo, hi)
 num_between() {
-  local v="$1"
+  local value="$1"
   local lo="$2"
   local hi="$3"
+  shift 3
 
-  num_cmp "$v" ge "$lo" &&
-  num_cmp "$v" le "$hi"
-}
+  num_is_number "$value" || return 1
+  num_is_number "$lo" || return 1
+  num_is_number "$hi" || return 1
 
-# num_ratio_cmp <num> <den> <op> <th>
-# Compare (num / den) with threshold.
-# Return: 0=true, 1=false, 2=invalid op
-num_ratio_cmp() {
-  local num="$1"
-  local den="$2"
-  local op="$3"
-  local th="$4"
+  local left_open=0 right_open=0
 
-  local cs="$__NUM_CALC_SCALE"
-  local ni di ti rhs
-
-  __num_scaled ni "$num"
-  __num_scaled di "$den"
-  __num_scaled ti "$th"
-
-  (( di == 0 )) && return 1
-
-  # Cross-multiply:
-  # num  op  th * den
-  # Reverse inequality if den < 0.
-  rhs=$(( (ti * di) / 10**cs ))
-
-  if (( di < 0 )); then
-    case "$op" in
-      gt) op="lt" ;;
-      ge) op="le" ;;
-      lt) op="gt" ;;
-      le) op="ge" ;;
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --left-open) left_open=1 ;;
+      --right-open) right_open=1 ;;
+      --) shift; break ;;
+      *) break ;;
     esac
-  fi
+    shift
+  done
 
-  case "$op" in
-    gt) (( ni >  rhs )) ;;
-    ge) (( ni >= rhs )) ;;
-    lt) (( ni <  rhs )) ;;
-    le) (( ni <= rhs )) ;;
-    eq) (( ni == rhs )) ;;
-    ne) (( ni != rhs )) ;;
-    *)  return 2 ;;
-  esac
+  local lop="ge" rop="le"
+  (( left_open )) && lop="gt"
+  (( right_open )) && rop="lt"
+
+  num_cmp "$value" "$lop" "$lo" &&
+  num_cmp "$value" "$rop" "$hi"
 }
 
-# num_ratio_between <num> <den> <lo> <hi>
-# True if lo <= (num / den) <= hi.
-num_ratio_between() {
-  local num="$1"
-  local den="$2"
-  local lo="$3"
-  local hi="$4"
-
-  num_ratio_cmp "$num" "$den" ge "$lo" &&
-  num_ratio_cmp "$num" "$den" le "$hi"
+# num_random_int32
+# Build a wider pseudo-random integer from two 15-bit $RANDOM values.
+# Structure: (high_bits << 16) XOR low_bits.
+# Increases entropy compared to a single $RANDOM.
+# Not suitable for security-sensitive use.
+num_random_int32() {
+  printf '%u\n' $(( (RANDOM << 16) ^ RANDOM ))
 }
