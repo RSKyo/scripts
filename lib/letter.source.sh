@@ -98,39 +98,45 @@ letter_script_ratio() {
   ' "$script" <<< "$text"
 }
 
-# Trim non-letter characters from both ends
+# Trim leading and trailing non-letter characters.
+# Optionally allow extra character class (e.g. "0-9", "_", "-").
 letter_trim() {
   local text="$1"
+  local extra="${2:-}"
 
-  __perl '
-    use strict; use warnings;
+  EXTRA="$extra" __perl '
+    use strict;
+    use warnings;
+
+    my $extra = $ENV{EXTRA} // "";
     my $s = join("", <>);
 
-    $s =~ s/^\P{L}+//;
-    $s =~ s/\P{L}+$//;
+    $s =~ s/^[^\p{L}$extra]+//;
+    $s =~ s/[^\p{L}$extra]+$//;
 
     print $s;
   ' <<< "$text"
 }
 
-# Trim non-letter-or-digit characters from both ends
-alnum_trim() {
+letter_demath() {
   local text="$1"
 
   __perl '
-    use strict; use warnings;
+    use strict;
+    use warnings;
+    use Unicode::Normalize;
+
     my $s = join("", <>);
 
-    # trim leading non-letter/digit
-    $s =~ s/^[^\p{L}0-9]+//;
+    # Compatibility decomposition
+    $s = NFKD($s);
 
-    # trim trailing non-letter/digit
-    $s =~ s/[^\p{L}0-9]+$//;
+    # Remove combining marks
+    $s =~ s/\p{M}//g;
 
     print $s;
   ' <<< "$text"
 }
-
 
 # Get position of first letter (1-based)
 first_letter_pos() {
