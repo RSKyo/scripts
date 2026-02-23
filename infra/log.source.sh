@@ -1,72 +1,57 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # Source-only library: log
-# - provides logging functions: _debug, _info, _warn, _error
-# - stdout: (none)
-# - stderr: log messages
-# - return: always 0
+# Provides simple logging functions.
+# - debug output controlled by debug_on / debug_off
+# - logs print to stderr
 
 # Prevent multiple sourcing
 [[ -n "${__LOG_SOURCED+x}" ]] && return 0
 __LOG_SOURCED=1
 
-_log_emit() {
+# Debug flag (default: off)
+__LOG_DEBUG=0
+
+# Output function name flag (default: off)
+__LOG_FUNC=0
+
+# -------------------------------------------------
+# Internal Helpers
+# -------------------------------------------------
+
+# Emit a log line to stderr.
+# Format: [LEVEL] function(): message
+__log_emit() {
   local level="$1"
-  local scope="$2"
-  local func="$3"
-  shift 3
-
-  echo "[$level] $scope: ${func}(): $*" >&2
-}
-
-logd() {
-  local scope="$1"
   shift
-  [[ -n "$scope" ]] || return 0
 
-  # normalize names
-  local scope_l="${scope,,}"
-  local scope_u="${scope^^}"
-  
-  local var_l="${scope_l}_debug"
-  local var_u="${scope_u}_DEBUG"
-  
-  if [[ -n "${!var_l+x}" ]]; then
-    [[ "${!var_l}" == "1" ]] || return 0
-  elif [[ -n "${!var_u+x}" ]]; then
-    [[ "${!var_u}" == "1" ]] || return 0
+  local prefix="[$level]"
+
+  if [[ "$__LOG_FUNC" == "1" ]]; then
+    prefix+=" ${FUNCNAME[2]:-MAIN}():"
   else
-    [[ "${DEBUG:-0}" == "1" ]] || return 0
+    prefix+=":"
   fi
 
-  local level="DEBUG"
-  local func="${FUNCNAME[1]:-MAIN}"
-  _log_emit "$level" "$scope" "$func" "$@"
+  printf '%s %s\n' "$prefix" "$*" >&2
 }
 
-logi() {
-  local scope="$1"
-  shift
-  [[ -n "$scope" ]] || return 0
-  local level="INFO"
-  local func="${FUNCNAME[1]:-MAIN}"
-  _log_emit "$level" "$scope" "$func" "$@" 
+# -------------------------------------------------
+# Public API
+# -------------------------------------------------
+
+debug_on()  { __LOG_DEBUG=1; }
+debug_off() { __LOG_DEBUG=0; }
+log_func_on()  { __LOG_FUNC=1; }
+log_func_off() { __LOG_FUNC=0; }
+
+# Debug log (only prints when debug is on)
+logd() {
+  [[ "$__LOG_DEBUG" == "1" ]] || return 0
+  __log_emit "DEBUG" "$@"
 }
 
-logw() {
-  local scope="$1"
-  shift
-  [[ -n "$scope" ]] || return 0
-  local level="WARN"
-  local func="${FUNCNAME[1]:-MAIN}"
-  _log_emit "$level" "$scope" "$func" "$@" 
-}
-
-loge() {
-  local scope="$1"
-  shift
-  [[ -n "$scope" ]] || return 0
-  local level="ERROR"
-  local func="${FUNCNAME[1]:-MAIN}"
-  _log_emit "$level" "$scope" "$func" "$@"
-}
+# Always print
+logi() { __log_emit "INFO"  "$@"; }
+logw() { __log_emit "WARN"  "$@"; }
+loge() { __log_emit "ERROR" "$@"; }

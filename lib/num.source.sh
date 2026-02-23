@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # num.source.sh
-# Fixed-point numeric utilities for Bash.
-# All arithmetic uses integer scaling.
-# Default internal precision: 6 decimal places.
-# Designed for moderate numeric ranges within 64-bit limits.
-
-
+# num utilities module.
 
 # Prevent multiple sourcing
 [[ -n "${__NUM_SOURCED+x}" ]] && return 0

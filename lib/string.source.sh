@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # string.source.sh
-# String utilities.
-# - _string_* : parameter-based primitives (nameref output)
-# - string_*  : stream wrappers (stdin → stdout)
-# - All indices are 1-based and inclusive.
+# String utilities module.
 
 # shellcheck disable=SC1091,SC2034
 
@@ -43,11 +40,21 @@ __string_match_expand() {
     window="${input:from_idx:to_idx-from_idx}"
     suffix="${input:to_idx}"
 
+    logd '----------'
+    logd "string: $input"
+    logd "from_idx: $from_idx, to_idx: $to_idx, window: $window"
+    logd "regex: $regex"
+
     if [[ -n "$window" && "$window" =~ $regex ]]; then
       match="${BASH_REMATCH[0]}"
       left="$prefix${window%%"$match"*}"
       right="${window#*"$match"}$suffix"
     fi
+
+    logd "match: $match"
+    logd "left: $left"
+    logd "right: $right"
+
   fi
 
   printf -v out '%s%s%s%s%s' "$left" "$sep" "$match" "$sep" "$right"
@@ -79,6 +86,9 @@ __string_match_expand_into() {
 # -------------------------------------------------
 # Public API (stdout interface)
 # -------------------------------------------------
+
+# Expose internal separator as public constant (read-only).
+readonly STRING_SEP="$__STRING_SEP"
 
 # string_trim <input>
 # Trim leading and trailing whitespace.
@@ -162,8 +172,8 @@ string_random() {
 string_expand() {
   local input="${1-}"
   local regex="${2:?string_expand: missing regex}"
-  local win_from_ratio="${3:-0}"
-  local win_to_ratio="${4:-1}"
+  local ratio_start="${3:-0}"
+  local ratio_end="${4:-1}"
   local sep="$__STRING_SEP"
 
   if [[ -z "$input" ]]; then 
@@ -172,21 +182,23 @@ string_expand() {
   fi
 
   # Normalize ratios
-  num_between "$win_from_ratio" 0 1 --right-open || win_from_ratio=0
-  num_between "$win_to_ratio" 0 1 --left-open || win_to_ratio=1
-  num_cmp "$win_from_ratio" lt "$win_to_ratio" || {
-    win_from_ratio=0
-    win_to_ratio=1
-  }
+  if [[ "$ratio_start" != '0' || "$ratio_end" != '1' ]]; then
+    num_between "$ratio_start" 0 1 --right-open || ratio_start=0
+    num_between "$ratio_end" 0 1 --left-open || ratio_end=1
+    num_cmp "$ratio_start" lt "$ratio_end" || {
+      ratio_start=0
+      ratio_end=1
+    }
+  fi
 
   local len=${#input}
   local from_boundary to_boundary expanded
 
-  from_boundary=$(num_product "$len" "$win_from_ratio" 0)
-  to_boundary=$(num_product "$len" "$win_to_ratio" 0)
+  from_boundary=$(num_product "$len" "$ratio_start" 0)
+  to_boundary=$(num_product "$len" "$ratio_end" 0)
   
   __string_match_expand_into expanded \
-      "$input" "$regex" "$from_boundary" "$to_boundary"
+    "$input" "$regex" "$from_boundary" "$to_boundary"
 
   printf '%s\n' "$expanded"
   
@@ -195,18 +207,42 @@ string_expand() {
 
 # string_match <input> <regex> [from_ratio] [to_ratio]
 # Return first matched substring within ratio window.
-# Internally uses string_expand.
+# Window is defined by ratio range (default 0–1).
 string_match() {
   local input="${1-}"
-  local regex="${2:?string_expand: missing regex}"
-  local win_from_ratio="${3:-0}"
-  local win_to_ratio="${4:-1}"
+  local regex="${2:?string_match: missing regex}"
+  local ratio_start="${3:-0}"
+  local ratio_end="${4:-1}"
   local sep="$__STRING_SEP"
 
-  local expanded match _
-  expanded=$(string_expand "$input" "$regex" "$win_from_ratio" "$win_to_ratio")
+  if [[ -z "$input" ]]; then 
+    printf '%s\n' ''
+    return 0
+  fi
+
+  # Normalize ratios
+  if [[ "$ratio_start" != '0' || "$ratio_end" != '1' ]]; then
+    num_between "$ratio_start" 0 1 --right-open || ratio_start=0
+    num_between "$ratio_end" 0 1 --left-open || ratio_end=1
+    num_cmp "$ratio_start" lt "$ratio_end" || {
+      ratio_start=0
+      ratio_end=1
+    }
+  fi
+
+  local len=${#input}
+  local from_boundary to_boundary expanded
+
+  from_boundary=$(num_product "$len" "$ratio_start" 0)
+  to_boundary=$(num_product "$len" "$ratio_end" 0)
+
+  __string_match_expand_into expanded \
+      "$input" "$regex" "$from_boundary" "$to_boundary"
+
+  local match _
   IFS="$sep" read -r _ match _ <<< "$expanded"
 
   printf '%s\n' "$match"
-}
 
+  return 0
+}
