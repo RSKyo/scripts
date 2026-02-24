@@ -13,12 +13,20 @@ readonly __YT_VIDEO_TRACKLIST_TITLE_SEP_REGEXES=(
   '[[:space:]]+[-–—－][[:space:]]+'
   '[-–—－]'
   '[[:space:]]+\|[[:space:]]+'
+readonly __YT_VIDEO_TRACKLIST_TITLE_SEP_REGEXES=(
+  '[[:space:]]+[-–—－][[:space:]]+'
+  '[-–—－]'
+  '[[:space:]]+\|[[:space:]]+'
   '\|'
+  '[[:space:]]+\/[[:space:]]+'
   '[[:space:]]+\/[[:space:]]+'
   '\/'
   '·'
 )
 
+__YT_VIDEO_TRACKLIST_REPEAT_REGEX=
+__YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_MTIME=
+readonly __YT_TRACKLIST_END_TOL_PCT=30
 __YT_VIDEO_TRACKLIST_REPEAT_REGEX=
 __YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_MTIME=
 readonly __YT_TRACKLIST_END_TOL_PCT=30
@@ -49,13 +57,51 @@ __yt_video_tracklist_resolve() {
   local -a tracklist_lines
   local start_idx=-1 end_idx=-1
   local zero_idx=-1 max_sec=-1
+  local -a lines
+  readarray -t lines < <(text_filter_expand "$TIME_TIMESTAMP_REGEX")
+  (( ${#lines[@]} > 0 )) || return 0
+
+  local i line _
+  local left match right
+
+  # --- Detect tracklist lines (00:00 -> Maximum) ---
+  # Select lines from the segment starting at 00:00 with the largest end timestamp.
+  local -a tracklist_lines
+  local start_idx=-1 end_idx=-1
+  local zero_idx=-1 max_sec=-1
 
   for (( i=0; i<${#lines[@]}; i++ )); do
     line="${lines[i]}"
     IFS="$STRING_SEP" read -r _ match _ <<< "$line"
     match="${match//[[:space:]]/}"
     sec=$(time_hms_to_s "$match")
+  for (( i=0; i<${#lines[@]}; i++ )); do
+    line="${lines[i]}"
+    IFS="$STRING_SEP" read -r _ match _ <<< "$line"
+    match="${match//[[:space:]]/}"
+    sec=$(time_hms_to_s "$match")
 
+    (( sec == 0 )) && zero_idx="$i"
+    if (( sec > max_sec )) && (( zero_idx >= 0 )); then
+      start_idx="$zero_idx"
+      end_idx="$i"
+      max_sec="$sec"
+    fi
+  done
+
+  (( start_idx >=0 )) || return 0
+  tracklist_lines=("${lines[@]:start_idx:$(( end_idx - start_idx + 1 ))}")
+
+  for (( i=0; i<${#tracklist_lines[@]}; i++ )); do
+    line="${tracklist_lines[i]}"
+    IFS="$STRING_SEP" read -r left match right <<< "$line"
+    left=$(letter_demath "$left")
+    right=$(letter_demath "$right")
+
+    tracklist_lines[i]="${left}${STRING_SEP}${match}${STRING_SEP}${right}"
+  done
+
+  # --- Detect timestamp side ---
     (( sec == 0 )) && zero_idx="$i"
     if (( sec > max_sec )) && (( zero_idx >= 0 )); then
       start_idx="$zero_idx"
@@ -84,8 +130,16 @@ __yt_video_tracklist_resolve() {
 
     (( ${#left} > ${#right} )) && (( score++ ))
     (( ${#right} > ${#left} )) && (( score-- ))
+  for line in "${tracklist_lines[@]}"; do
+    IFS="$STRING_SEP" read -r left _ right <<< "$line"
+
+    (( ${#left} > ${#right} )) && (( score++ ))
+    (( ${#right} > ${#left} )) && (( score-- ))
   done
 
+  # --- Normalize and build tracklist ---
+  local -a tracklist
+  local ts title
   # --- Normalize and build tracklist ---
   local -a tracklist
   local ts title
@@ -93,22 +147,32 @@ __yt_video_tracklist_resolve() {
   for line in "${tracklist_lines[@]}"; do
     IFS="$STRING_SEP" read -r left match right <<< "$line"
     
+    IFS="$STRING_SEP" read -r left match right <<< "$line"
+    
     if (( score > 0 )); then
       tracklist+=("$match$STRING_SEP$left")
+      tracklist+=("$match$STRING_SEP$left")
     else
+      tracklist+=("$match$STRING_SEP$right")
       tracklist+=("$match$STRING_SEP$right")
     fi
   done
 
   # --- Detect minimal title start ---
   local max_pos=9999
+  # --- Detect minimal title start ---
+  local max_pos=9999
   local min_pos="$max_pos"
+  local pos 
   local pos 
 
   for line in "${tracklist[@]}"; do
     IFS="$STRING_SEP" read -r ts title <<< "$line"
 
+    IFS="$STRING_SEP" read -r ts title <<< "$line"
+
     pos="$(first_letter_pos "$title")" || continue
+    (( pos > 0 && pos < min_pos )) && min_pos="$pos"
     (( pos > 0 && pos < min_pos )) && min_pos="$pos"
   done
 
@@ -117,7 +181,12 @@ __yt_video_tracklist_resolve() {
   # --- output trimmed tracklist ---
   for line in "${tracklist[@]}"; do
     IFS="$STRING_SEP" read -r ts title <<< "$line"
+    IFS="$STRING_SEP" read -r ts title <<< "$line"
 
+    ts="${ts//[[:space:]]/}"
+    title=$(string_slice "$title" "$min_pos")
+    title=$(letter_trim "$title" "0-9\(（\)）\[【\]】")
+    printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
     ts="${ts//[[:space:]]/}"
     title=$(string_slice "$title" "$min_pos")
     title=$(letter_trim "$title" "0-9\(（\)）\[【\]】")
@@ -126,6 +195,9 @@ __yt_video_tracklist_resolve() {
 }
 
 __yt_video_tracklist_bilingual_process() {
+  local -a tracklist
+  readarray -t tracklist
+  (( ${#tracklist[@]} > 0 )) || return 0
   local -a tracklist
   readarray -t tracklist
   (( ${#tracklist[@]} > 0 )) || return 0
@@ -138,12 +210,17 @@ __yt_video_tracklist_bilingual_process() {
 
   for line in "${tracklist[@]}"; do
     IFS="$STRING_SEP" read -r ts title <<< "$line"
+    IFS="$STRING_SEP" read -r ts title <<< "$line"
     ts_list+=("$ts")
     title_list+=("$title")
   done
 
   local regex sep_regex
 
+  for regex in "${__YT_VIDEO_TRACKLIST_TITLE_SEP_REGEXES[@]}"; do
+    text_supports "$regex" 0 1 0.6 < <(
+      printf '%s\n' "${title_list[@]}"
+    ) || continue
   for regex in "${__YT_VIDEO_TRACKLIST_TITLE_SEP_REGEXES[@]}"; do
     text_supports "$regex" 0 1 0.6 < <(
       printf '%s\n' "${title_list[@]}"
@@ -155,10 +232,21 @@ __yt_video_tracklist_bilingual_process() {
   [[ -n "$sep_regex" ]] || { printf '%s\n' "${tracklist[@]}" ; return 0; }
 
   local -a title_expanded
+  local -a title_expanded
   local left match right
   local -a left_list
   local -a right_list
+  local -a left_list
+  local -a right_list
 
+  readarray -t title_expanded < <(
+    text_expand "$sep_regex" 0 1 < <(
+      printf '%s\n' "${title_list[@]}"
+    )
+  )
+  
+  for line in "${title_expanded[@]}"; do
+    IFS="$STRING_SEP" read -r left match right <<< "$line"
   readarray -t title_expanded < <(
     text_expand "$sep_regex" 0 1 < <(
       printf '%s\n' "${title_list[@]}"
@@ -176,9 +264,12 @@ __yt_video_tracklist_bilingual_process() {
   # - 如果一侧无重复，另一侧有重复，则无重复的一侧更可能是标题主体，因为专辑、艺术家等信息更可能重复出现。
   # - 否则，优先拉丁字母较多的一侧更可能是标题主体
   local lt lc rt rc use_side
+  local lt lc rt rc use_side
 
   lc=$(array_distinct_count left_list)
+  lc=$(array_distinct_count left_list)
   lt=${#left_list[@]}
+  rc=$(array_distinct_count right_list)
   rc=$(array_distinct_count right_list)
   rt=${#right_list[@]}
 
@@ -189,14 +280,18 @@ __yt_video_tracklist_bilingual_process() {
   else
     local score=0
     local llc rlc
+    local llc rlc
 
     for (( i=0; i<len; i++ )); do
       llc="$(letter_script_count "${left_list[i]}" latin)"
       rlc="$(letter_script_count "${right_list[i]}" latin)"
       (( llc > rlc )) && (( score++ ))
       (( rlc > llc )) && (( score-- ))
+      (( llc > rlc )) && (( score++ ))
+      (( rlc > llc )) && (( score-- ))
     done
 
+    if (( score > 0 )); then
     if (( score > 0 )); then
       use_side="left"
     else
@@ -207,9 +302,13 @@ __yt_video_tracklist_bilingual_process() {
   for (( i=0; i<len; i++ )); do
     if [[ "$use_side" == 'left' ]]; then
       title="${left_list[i]}"
+      title="${left_list[i]}"
     else
       title="${right_list[i]}"
+      title="${right_list[i]}"
     fi
+    title=$(letter_trim "$title" "0-9\(（\)）\[【\]】")
+    printf '%s%s%s\n' "${ts_list[i]}" "$STRING_SEP" "$title"
     title=$(letter_trim "$title" "0-9\(（\)）\[【\]】")
     printf '%s%s%s\n' "${ts_list[i]}" "$STRING_SEP" "$title"
   done
@@ -327,6 +426,14 @@ yt_video_tracklist() {
       )
     )
   )
+  __yt_video_tracklist_repeat_process "$input" < <(
+    __yt_video_tracklist_bilingual_process < <(
+      __yt_video_tracklist_resolve < <(
+        yt_video_description "$input"
+      )
+    )
+  )
 
   return 0
 }
+
