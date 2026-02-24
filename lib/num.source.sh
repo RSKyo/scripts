@@ -13,20 +13,13 @@ __NUM_CALC_SCALE=6
 # Internal Helpers (name-ref only)
 # -------------------------------------------------
 
-# __num_scaled <out_ref> <decimal>
-# Convert decimal string to internal fixed-point integer.
-# - Uses __NUM_CALC_SCALE as calculation precision.
-# - Truncates extra fractional digits (no rounding).
-# - Supports negative values.
-# - Result written to <out_ref>.
-__num_scaled() {
-  local -n out="$1"
+____num_scaled() {
+  local -n scaled="$1"
   local value="$2"
   
   local calc_scale="$__NUM_CALC_SCALE"
   local sign=1
   local integer fraction
-  local scaled
 
   [[ $value == -* ]] && {
     sign=-1
@@ -44,35 +37,11 @@ __num_scaled() {
     scaled=$(( scaled + fraction * 10**(calc_scale - ${#fraction}) ))
   fi
 
-  # shellcheck disable=SC2034
-  out=$(( sign * scaled ))
+  scaled=$(( sign * scaled ))
 }
 
-# __num_scaled_into <out_ref> <decimal>
-# Safe wrapper for __num_scaled.
-# - Isolates name-reference scope.
-# - Prevents variable collisions.
-# - Result written to <out_ref>.
-__num_scaled_into() {
-  local -n out="$1"
-  local __num_scaled_value="$2"
-  local __num_scaled_out
-
-  __num_scaled __num_scaled_out \
-    "$__num_scaled_value"
-  
-  # shellcheck disable=SC2034
-  out="$__num_scaled_out"
-}
-
-# __num_restored <out_ref> <scaled_int> [scale] [trim]
-# Restore internal fixed-point integer to decimal string.
-# - Adjusts from internal calculation scale to requested precision.
-# - Optionally trims trailing zeros in fractional part.
-# - Supports negative values.
-# - Result written to <out_ref>.
-__num_restored() {
-  local -n out="$1"
+____num_restored() {
+  local -n restored="$1"
   local value="$2"
   local scale="${3:-3}"
   local trim="${4:-1}"
@@ -80,7 +49,6 @@ __num_restored() {
   local calc_scale="$__NUM_CALC_SCALE"
   local sign=1
   local pow integer fraction
-  local restored
 
   (( value < 0 )) && {
     sign=-1
@@ -89,7 +57,7 @@ __num_restored() {
 
   if (( scale == 0 )); then
     value=$(( value / 10**calc_scale ))
-    out="$(( sign * value ))"
+    restored="$(( sign * value ))"
     return 0
   fi
 
@@ -111,29 +79,23 @@ __num_restored() {
   restored="$(( sign * integer ))"
   [[ -n $fraction ]] && restored+=".$fraction"
 
-  # shellcheck disable=SC2034
-  out="$restored"
+  return 0
 }
 
-# __num_restored_into <out_ref> <scaled_int> [scale] [trim]
-# Safe wrapper for __num_restored.
-# - Isolates name-reference scope.
-# - Prevents variable collisions.
-# - Result written to <out_ref>.
-__num_restored_into() {
-  local -n out="$1"
-  local __num_restored_value="$2"
-  local __num_restored_scale="${3:-3}"
-  local __num_restored_trim="${4:-1}"
-  local __num_restored_out
+__num_scaled() {
+  local -n _out_scaled="$1"
+  shift
+  local _inner_scaled
+  ____num_scaled _inner_scaled "$@"
+  _out_scaled="$_inner_scaled"
+}
 
-  __num_restored __num_restored_out \
-    "$__num_restored_value" \
-    "$__num_restored_scale" \
-    "$__num_restored_trim"
-
-  # shellcheck disable=SC2034
-  out="$__num_restored_out"
+__num_restored() {
+  local -n _out_restored="$1"
+  shift
+  local _inner_restored
+  ____num_restored _inner_restored  "$@"
+  _out_restored="$_inner_restored"
 }
 
 # -------------------------------------------------
@@ -231,8 +193,8 @@ num_fixed() {
   local trim="${3:-1}"
 
   local scaled restored
-  __num_scaled_into scaled "$value"
-  __num_restored_into restored "$scaled" "$scale" "$trim"
+  __num_scaled scaled "$value"
+  __num_restored restored "$scaled" "$scale" "$trim"
 
   printf '%s\n' "$restored"
 }
@@ -251,10 +213,10 @@ num_sum() {
   local scale="${3:-3}"
 
   local ai bi sum restored
-  __num_scaled_into ai "$a"
-  __num_scaled_into bi "$b"
+  __num_scaled ai "$a"
+  __num_scaled bi "$b"
   sum=$(( ai + bi ))
-  __num_restored_into restored "$sum" "$scale"
+  __num_restored restored "$sum" "$scale"
 
   printf '%s\n' "$restored"
 }
@@ -267,10 +229,10 @@ num_diff() {
   local scale="${3:-3}"
 
   local ai bi diff restored
-  __num_scaled_into ai "$a"
-  __num_scaled_into bi "$b"
+  __num_scaled ai "$a"
+  __num_scaled bi "$b"
   diff=$(( ai - bi ))
-  __num_restored_into restored "$diff" "$scale"
+  __num_restored restored "$diff" "$scale"
   
   printf '%s\n' "$restored"
 }
@@ -285,10 +247,10 @@ num_product() {
   local ai bi prod restored
   local cs="$__NUM_CALC_SCALE"
 
-  __num_scaled_into ai "$a"
-  __num_scaled_into bi "$b"
+  __num_scaled ai "$a"
+  __num_scaled bi "$b"
   prod=$(( ai * bi / 10**cs ))
-  __num_restored_into restored "$prod" "$scale"
+  __num_restored restored "$prod" "$scale"
 
   printf '%s\n' "$restored"
 }
@@ -303,13 +265,13 @@ num_quotient() {
 
   local ai bi quot restored
   local cs="$__NUM_CALC_SCALE"
-  __num_scaled_into ai "$a"
-  __num_scaled_into bi "$b"
+  __num_scaled ai "$a"
+  __num_scaled bi "$b"
 
   (( bi == 0 )) && return 1
 
   quot=$(( ai * 10**cs / bi ))
-  __num_restored_into restored "$quot" "$scale"
+  __num_restored restored "$quot" "$scale"
 
   printf '%s\n' "$restored"
 }
@@ -328,8 +290,8 @@ num_cmp() {
 
   local ai bi
 
-  __num_scaled_into ai "$a"
-  __num_scaled_into bi "$b"
+  __num_scaled ai "$a"
+  __num_scaled bi "$b"
 
   case "$op" in
     gt) (( ai >  bi )) ;;

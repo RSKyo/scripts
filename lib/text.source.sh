@@ -2,7 +2,7 @@
 # text.source.sh
 # text utilities module.
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091,SC2016
 
 # Prevent multiple sourcing
 [[ -n "${__TEXT_SOURCED+x}" ]] && return 0
@@ -12,16 +12,14 @@ __TEXT_SOURCED=1
 readonly __TEXT_SEP=$'\x1f'
 
 # Dependencies (bootstrap must be sourced by the entry script)
-source "$INFRA_DIR/options.source.sh"
 source "$LIB_DIR/string.source.sh"
-source "$LIB_DIR/num.source.sh"
 
 # text_expand <regex> [ratio_start] [ratio_end]
 # Expand each line within ratio window (0–1).
 text_expand() {
   local regex="${1:?text_expand: missing regex}"
-  local ratio_start="${2:-0}"
-  local ratio_end="${3:-1}"
+  local ratio_start="${2-}"
+  local ratio_end="${3-}"
   local line
 
   while IFS= read -r line; do
@@ -30,11 +28,11 @@ text_expand() {
 }
 
 # text_filter <regex> [ratio_start] [ratio_end]
-# Output original lines whose match is non-empty within ratio window (0–1).
+# If ratio arguments are provided, match within that window only.
 text_filter() {
   local regex="${1:?text_filter: missing regex}"
-  local ratio_start="${2:-0}"
-  local ratio_end="${3:-1}"
+  local ratio_start="${2-}"
+  local ratio_end="${3-}"
 
   local line match
 
@@ -49,11 +47,11 @@ text_filter() {
 }
 
 # text_filter_expand <regex> [ratio_start] [ratio_end]
-# Output expanded lines whose match is non-empty within ratio window (0–1).
+# If ratio arguments are provided, match within that window only.
 text_filter_expand() {
   local regex="${1:?text_filter: missing regex}"
-  local ratio_start="${2:-0}"
-  local ratio_end="${3:-1}"
+  local ratio_start="${2-}"
+  local ratio_end="${3-}"
 
   local line line_expanded
   local match _
@@ -74,8 +72,8 @@ text_filter_expand() {
 # Hit ratio is based on all input lines.
 text_supports() {
   local regex="${1:?text_supports: missing regex}"
-  local ratio_start="${2:-0}"
-  local ratio_end="${3:-1}"
+  local ratio_start="${2-}"
+  local ratio_end="${3-}"
   local support="${4:-0.6}"
  
   local total=0 hits=0
@@ -97,18 +95,21 @@ text_supports() {
   num_cmp "$hits_ratio" ge "$support"
 }
 
-# text_lines_count
-# Print number of stdin lines.
-text_lines_count() {
-  local n
-  n=$(wc -l)
-  printf '%s\n' "${n//[[:space:]]/}"
-}
+# Normalize Unicode text by compatibility decomposition.
+# - Applies NFKD normalization.
+# - Removes all combining marks (\p{M}).
+# - Preserves original line structure.
+# - Works as a stream filter (reads from stdin, writes to stdout).
+text_demath() {
+  __perl '
+    use strict;
+    use warnings;
+    use Unicode::Normalize;
 
-# text_unique_count
-# Print number of unique stdin lines.
-text_unique_count() {
-  local n
-  n=$(sort -u | wc -l)
-  printf '%s\n' "${n//[[:space:]]/}"
+    while (<>) {
+      $_ = NFKD($_);
+      s/\p{M}//g;
+      print;
+    }
+  '
 }

@@ -18,69 +18,79 @@ source "$LIB_DIR/num.source.sh"
 # Internal Helpers (name-ref only)
 # -------------------------------------------------
 
-# __string_match_expand <out_var> <input> <regex> <from_idx> <to_idx>
-# Core matcher (internal use).
-# - Slice input using half-open boundary indices [from_idx, to_idx).
-# - Search regex within the sliced window.
-# - Output formatted string: left<SEP>match<SEP>right
-# - out_var is a nameref target.
-__string_match_expand() {
-  local -n out="$1"
-  local input="$2"
-  local regex="$3"
-  local from_idx="$4"
-  local to_idx="$5"
+____string_window() {
+  local -n prefix="$1"
+  local -n window="$2"
+  local -n suffix="$3"
 
-  local sep="$__STRING_SEP"
-  local prefix window suffix
-  local left="$input" match='' right=''
+  local input="$4"
+  local ratio_start="$5"
+  local ratio_end="$6"
 
-  if (( from_idx < to_idx )); then
-    prefix="${input:0:from_idx}"
-    window="${input:from_idx:to_idx-from_idx}"
-    suffix="${input:to_idx}"
+  local len=${#input}
+  local boundary_from boundary_to
 
-    logd '----------'
-    logd "string: $input"
-    logd "from_idx: $from_idx, to_idx: $to_idx, window: $window"
-    logd "regex: $regex"
+  boundary_from=$(num_product "$len" "$ratio_start" 0)
+  boundary_to=$(num_product "$len" "$ratio_end" 0)
 
-    if [[ -n "$window" && "$window" =~ $regex ]]; then
-      match="${BASH_REMATCH[0]}"
-      left="$prefix${window%%"$match"*}"
-      right="${window#*"$match"}$suffix"
-    fi
-
-    logd "match: $match"
-    logd "left: $left"
-    logd "right: $right"
-
-  fi
-
-  printf -v out '%s%s%s%s%s' "$left" "$sep" "$match" "$sep" "$right"
+  prefix="${input:0:boundary_from}"
+  window="${input:boundary_from:boundary_to-boundary_from}"
+  suffix="${input:boundary_to}"
 }
 
-# __string_match_expand_into <out_var> <input> <regex> <from_idx> <to_idx>
-# Safe wrapper for __string_match_expand.
-# - Isolates internal variable names to avoid nameref collisions.
-# - Writes result into out_var.
-__string_match_expand_into() {
-  local -n out="$1"
-  local __string_match_expand_input="$2"
-  local __string_match_expand_regex="$3"
-  local __string_match_expand_from_idx="$4"
-  local __string_match_expand_to_idx="$5"
+____string_match() {
+  local -n left="$1"
+  local -n match="$2"
+  local -n right="$3"
 
-  local __string_match_out
+  local input="$4"
+  local regex="$5"
 
-  __string_match_expand __string_match_out \
-    "$__string_match_expand_input" \
-    "$__string_match_expand_regex" \
-    "$__string_match_expand_from_idx" \
-    "$__string_match_expand_to_idx"
-  
-  # shellcheck disable=SC2034
-  out="$__string_match_out"
+  if [[ "$input" =~ $regex ]]; then
+    match="${BASH_REMATCH[0]}"
+    left="${input%%"$match"*}"
+    right="${input#*"$match"}"
+  else
+    left="$input"
+    match=''
+    right=''
+  fi
+}
+
+__string_window() {
+  local -n _out_prefix="$1"
+  local -n _out_window="$2"
+  local -n _out_suffix="$3"
+  shift 3
+  local _inner_prefix
+  local _inner_window
+  local _inner_suffix
+  ____string_window \
+    _inner_prefix \
+    _inner_window \
+    _inner_suffix \
+    "$@"
+  _out_prefix="$_inner_prefix"
+  _out_window="$_inner_window"
+  _out_suffix="$_inner_suffix"
+}
+
+__string_match() {
+  local -n _out_left="$1"
+  local -n _out_match="$2"
+  local -n _out_right="$3"
+  shift 3
+  local _inner_left
+  local _inner_match
+  local _inner_right
+  ____string_match \
+    _inner_left \
+    _inner_match \
+    _inner_right \
+    "$@"
+  _out_left="$_inner_left"
+  _out_match="$_inner_match"
+  _out_right="$_inner_right"
 }
 
 # -------------------------------------------------
@@ -168,79 +178,60 @@ string_random() {
 
 # string_expand <input> <regex> [from_ratio] [to_ratio]
 # Return structured result: left<SEP>match<SEP>right.
-# Window is defined by ratio range (default 0–1).
+# If ratio arguments are provided, match within that window only.
 string_expand() {
   local input="${1-}"
-  local regex="${2:?string_expand: missing regex}"
-  local ratio_start="${3:-0}"
-  local ratio_end="${4:-1}"
+  local regex="${2:?string_match: missing regex}"
+  local ratio_start="${3-}"
+  local ratio_end="${4-}"
+
   local sep="$__STRING_SEP"
 
-  if [[ -z "$input" ]]; then 
+  [[ -z "$input" ]] && {
     printf '%s%s%s%s%s\n' '' "$sep" '' "$sep" ''
     return 0
+  }
+
+  local left match right
+
+  if [[ -n "$ratio_start" && -n "$ratio_end" ]]; then
+    local prefix window suffix
+
+    __string_window prefix window suffix "$input" "$ratio_start" "$ratio_end"
+    __string_match left match right "$window" "$regex"
+
+    left="$prefix$left"
+    right="$right$suffix"
+  else
+    __string_match left match right "$input" "$regex"
   fi
 
-  # Normalize ratios
-  if [[ "$ratio_start" != '0' || "$ratio_end" != '1' ]]; then
-    num_between "$ratio_start" 0 1 --right-open || ratio_start=0
-    num_between "$ratio_end" 0 1 --left-open || ratio_end=1
-    num_cmp "$ratio_start" lt "$ratio_end" || {
-      ratio_start=0
-      ratio_end=1
-    }
-  fi
+  printf '%s%s%s%s%s\n' "$left" "$sep" "$match" "$sep" "$right"
 
-  local len=${#input}
-  local from_boundary to_boundary expanded
-
-  from_boundary=$(num_product "$len" "$ratio_start" 0)
-  to_boundary=$(num_product "$len" "$ratio_end" 0)
-  
-  __string_match_expand_into expanded \
-    "$input" "$regex" "$from_boundary" "$to_boundary"
-
-  printf '%s\n' "$expanded"
-  
   return 0
 }
 
 # string_match <input> <regex> [from_ratio] [to_ratio]
-# Return first matched substring within ratio window.
-# Window is defined by ratio range (default 0–1).
+# Return first matched substring.
+# If ratio arguments are provided, match within that window only.
 string_match() {
   local input="${1-}"
   local regex="${2:?string_match: missing regex}"
-  local ratio_start="${3:-0}"
-  local ratio_end="${4:-1}"
-  local sep="$__STRING_SEP"
+  local ratio_start="${3-}"
+  local ratio_end="${4-}"
 
-  if [[ -z "$input" ]]; then 
-    printf '%s\n' ''
-    return 0
+  [[ -z "$input" ]] && { printf '\n'; return 0; }
+
+  local left match right
+
+  if [[ -n "$ratio_start" && -n "$ratio_end" ]]; then
+    local prefix window suffix
+
+    __string_window prefix window suffix "$input" "$ratio_start" "$ratio_end"
+    __string_match left match right "$window" "$regex"
+  else
+    __string_match left match right "$input" "$regex"
   fi
-
-  # Normalize ratios
-  if [[ "$ratio_start" != '0' || "$ratio_end" != '1' ]]; then
-    num_between "$ratio_start" 0 1 --right-open || ratio_start=0
-    num_between "$ratio_end" 0 1 --left-open || ratio_end=1
-    num_cmp "$ratio_start" lt "$ratio_end" || {
-      ratio_start=0
-      ratio_end=1
-    }
-  fi
-
-  local len=${#input}
-  local from_boundary to_boundary expanded
-
-  from_boundary=$(num_product "$len" "$ratio_start" 0)
-  to_boundary=$(num_product "$len" "$ratio_end" 0)
-
-  __string_match_expand_into expanded \
-      "$input" "$regex" "$from_boundary" "$to_boundary"
-
-  local match _
-  IFS="$sep" read -r _ match _ <<< "$expanded"
 
   printf '%s\n' "$match"
 

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
+# letter.source.sh
+# letter utilities module.
+
 # shellcheck disable=SC2016
-#
-# Source-only library: Unicode letter helpers
-#
 
 # Prevent multiple sourcing
 [[ -n "${__LETTER_SOURCED+x}" ]] && return 0
 __LETTER_SOURCED=1
 
 # Normalize user-friendly script names to Unicode Script
-__normalize_script_into() {
+# shellcheck disable=SC2034
+__letter_normalize_script_into() {
   local -n out="$1"
   local name="$2"
   case "$name" in
@@ -21,105 +22,67 @@ __normalize_script_into() {
     greek)             out=Greek ;;
     cyrillic)          out=Cyrillic ;;
     arabic)            out=Arabic ;;
-    *)                 out=Arabic ;;
+    *)                 out= ;;
   esac
 }
 
-# Count all Unicode letters (\p{L})
+# Count Unicode letters.
+# - If script is provided, counts letters of that script.
+# - If script is empty, counts all letters (\p{L}).
+# - Output always ends with a newline.
 letter_count() {
-  local text="$1"
-
-  __perl '
-    use strict; use warnings;
-    my $s = join("", <>);
-    my $count = 0;
-
-    foreach my $ch (split(//, $s)) {
-      $count++ if $ch =~ /\p{L}/;
-    }
-
-    print $count;
-  ' <<< "$text"
-}
-
-# Count letters by Unicode Script
-letter_script_count() {
-  local text="$1"
+  local input="$1"
   local script
-  __normalize_script_into script "$2"
+  __normalize_script_into script "${2:-}"
 
   __perl '
     use strict;
     use warnings;
-    use utf8;
-    use open qw(:std :utf8);
 
-    my $script = shift @ARGV;
-    my $s = join("", <>);
-    my $count = 0;
-
-    foreach my $ch (split(//, $s)) {
-      $count++ if $ch =~ /\p{Script=\Q$script\E}/;
-    }
-
-    print $count;
-  ' "$script" <<< "$text"
-}
-
-# Ratio of a Unicode Script among all letters
-letter_script_ratio() {
-  local text="$1"
-  local script
-  __normalize_script_into script "$2"
-
-  __perl '
-    use strict;
-    use warnings;
-    use utf8;
-    use open qw(:std :utf8);
-
-    my $script = shift @ARGV;
+    my $script = shift @ARGV // "";
     my $s = join("", <>);
 
-    my $total  = 0;
-    my $target = 0;
+    my $count;
 
-    foreach my $ch (split(//, $s)) {
-      next unless $ch =~ /\p{L}/;
-      $total++;
-      $target++ if $ch =~ /\p{Script=$script}/;
-    }
-
-    if ($total == 0) {
-      print 0;
+    if ($script eq "") {
+        $count = () = $s =~ /\p{L}/g;
     } else {
-      printf "%.6f", $target / $total;
+        $count = () = $s =~ /\p{Script=\Q$script\E}/g;
     }
-  ' "$script" <<< "$text"
+
+    print "$count\n";
+  ' "$script" <<< "$input"
 }
 
-# Trim leading and trailing non-letter characters.
-# Optionally allow extra character class (e.g. "0-9", "_", "-").
+# Trim non-letter characters from both ends.
+# - Keeps all Unicode letters (\p{L}).
+# - Optionally keeps extra literal characters (2nd argument).
+# - Extra is treated as a plain character set (not a regex).
 letter_trim() {
-  local text="$1"
+  local input="$1"
   local extra="${2:-}"
 
-  EXTRA="$extra" __perl '
+  __perl '
     use strict;
     use warnings;
 
-    my $extra = $ENV{EXTRA} // "";
+    my $extra = shift @ARGV;
     my $s = join("", <>);
 
-    $s =~ s/^[^\p{L}$extra]+//;
-    $s =~ s/[^\p{L}$extra]+$//;
+    $s =~ s/^[^\p{L}\Q$extra\E]+//;
+    $s =~ s/[^\p{L}\Q$extra\E]+$//;
 
-    print $s;
-  ' <<< "$text"
+    print "$s\n";
+  ' "$extra" <<< "$input"
 }
 
+# Normalize Unicode letters by compatibility decomposition.
+# - Applies NFKD normalization.
+# - Removes all combining marks (\p{M}).
+# - Useful for converting styled/math letters to plain letters.
+# - Output always ends with a newline.
 letter_demath() {
-  local text="$1"
+  local input="$1"
 
   __perl '
     use strict;
@@ -134,46 +97,48 @@ letter_demath() {
     # Remove combining marks
     $s =~ s/\p{M}//g;
 
-    print $s;
-  ' <<< "$text"
+    print "$s\n";
+  ' <<< "$input"
 }
 
-# Get position of first letter (1-based)
+# Return the 1-based position of the first Unicode letter.
+# - A letter is defined by \p{L}.
+# - Returns 0 if no letter is found.
+# - Output always ends with a newline.
 first_letter_pos() {
-  local str="$1"
+  local input="$1"
 
   __perl '
-    use strict; use warnings;
+    use strict;
+    use warnings;
+
     my $s = join("", <>);
-    my $i = 1;   # 1-based index
 
-    foreach my $ch (split(//, $s)) {
-      if ($ch =~ /\p{L}/) {
-        print $i;
-        exit 0;
-      }
-      $i++;
+    if ($s =~ /(\p{L})/) {
+        print (($-[1] + 1) . "\n");
+    } else {
+        print "0\n";
     }
-
-    print 0;
-  ' <<< "$str"
+  ' <<< "$input"
 }
 
-# Get position of last letter (1-based)
+# Return the 1-based position of the last Unicode letter.
+# - A letter is defined by \p{L}.
+# - Returns 0 if no letter is found.
+# - Output always ends with a newline.
 last_letter_pos() {
-  local str="$1"
+  local input="$1"
 
   __perl '
-    use strict; use warnings;
-    my $s   = join("", <>);
-    my $pos = -1;
-    my $i = 1;   # 1-based index
+    use strict;
+    use warnings;
 
-    foreach my $ch (split(//, $s)) {
-      $pos = $i if $ch =~ /\p{L}/;
-      $i++;
+    my $s = join("", <>);
+
+    if ($s =~ /(\p{L})(?!.*\p{L})/s) {
+      print (($-[1] + 1) . "\n");
+    } else {
+      print "0\n";
     }
-
-    print $pos;
-  ' <<< "$str"
+  ' <<< "$input"
 }
