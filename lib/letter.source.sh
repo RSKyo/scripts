@@ -33,7 +33,7 @@ __letter_normalize_script_into() {
 letter_count() {
   local input="$1"
   local script
-  __normalize_script_into script "${2:-}"
+  __letter_normalize_script_into script "${2:-}"
 
   __perl '
     use strict;

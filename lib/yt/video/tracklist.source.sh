@@ -30,7 +30,6 @@ source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/letter.source.sh"
 source "$LIB_DIR/text.source.sh"
 source "$LIB_DIR/num.source.sh"
-source "$LIB_DIR/array.source.sh"
 source "$LIB_DIR/time.source.sh"
 
 readonly __YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_FILE="$LIB_DIR/yt/video/repeat_keywords.txt"
@@ -120,99 +119,100 @@ yt_video_tracklist_resolve() {
 
     ts="${ts//[[:space:]]/}"
     title=$(letter_slice "$title" "$min_pos")
-    title=$(letter_trim "$title" "0-9\(（\)）\[【\]】")
+    title=$(letter_trim "$title" "0123456789(（)）[【]】")
     
     printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
   done
 }
 
-__yt_video_tracklist_bilingual_process() {
+yt_video_tracklist_bilingual_process() {
+  local total i line
+  local ts title left match right _
+
+  # --- Stage 1: Load input ---
+  # Read full tracklist (timestamp + title) from stdin
   local -a tracklist
   readarray -t tracklist
-  (( ${#tracklist[@]} > 0 )) || return 0
+  total=${#tracklist[@]}
+  (( total == 0 )) && return 0
 
-  local -a ts_list=()
-  local -a title_list=()
-  local line ts title len
-
-  len=${#tracklist[@]}
-
-  for line in "${tracklist[@]}"; do
-    IFS="$STRING_SEP" read -r ts title <<< "$line"
-    ts_list+=("$ts")
-    title_list+=("$title")
-  done
-
-  local regex sep_regex
+  # --- Stage 2: Detect separator ---
+  # Identify a bilingual separator regex supported
+  # by the majority of titles
+  local titlelist_stream regex sep_regex
+  titlelist_stream="$(
+    for line in "${tracklist[@]}"; do
+      IFS="$STRING_SEP" read -r _ title <<< "$line"
+      printf '%s\n' "$title"
+    done
+  )"
 
   for regex in "${__YT_VIDEO_TRACKLIST_TITLE_SEP_REGEXES[@]}"; do
-    text_supports "$regex" 0 1 0.6 < <(
-      printf '%s\n' "${title_list[@]}"
-    ) || continue
+    text_supports "$regex" --support 0.6 <<< "$titlelist_stream" || continue
     sep_regex="$regex"
     break
   done
 
-  [[ -n "$sep_regex" ]] || { printf '%s\n' "${tracklist[@]}" ; return 0; }
+  # If no separator detected, output original tracklist
+  [[ -z "$sep_regex" ]] && { printf '%s\n' "${tracklist[@]}" ; return 0; }
 
-  local -a title_expanded
-  local left match right
-  local -a left_list
-  local -a right_list
-
-  readarray -t title_expanded < <(
-    text_expand "$sep_regex" 0 1 < <(
-      printf '%s\n' "${title_list[@]}"
-    )
+  # --- Stage 3: Expand titles ---
+  # Split titles into left / match / right components
+  local -a titlelist
+  readarray -t titlelist < <(
+    text_expand "$sep_regex" <<< "$titlelist_stream"
   )
-  
-  for line in "${title_expanded[@]}"; do
-    IFS="$STRING_SEP" read -r left match right <<< "$line"
-    [[ -n "$match" ]] || { right="$left"; }
+
+  # --- Stage 4: Analyze split structure ---
+  # Collect distinct counts for both sides
+  # to determine structural consistency
+  local -a left_list=()
+  local -a right_list=()
+  declare -A left_seen=()
+  declare -A right_seen=()
+
+  for (( i=0; i<total; i++ )); do
+    IFS="$STRING_SEP" read -r left match right <<< "${titlelist[i]}"
+    [[ -z "$match" ]] && right="$left"
+
     left_list+=("$left")
     right_list+=("$right")
+
+    left_seen["$left"]=1
+    right_seen["$right"]=1
   done
 
-  # 判断哪一侧更可能是标题主体，原则如下：
-  # - 如果一侧无重复，另一侧有重复，则无重复的一侧更可能是标题主体，因为专辑、艺术家等信息更可能重复出现。
-  # - 否则，优先拉丁字母较多的一侧更可能是标题主体
-  local lt lc rt rc use_side
+  local lc=${#left_seen[@]}
+  local rc=${#right_seen[@]}
 
-  lc=$(array_distinct_count left_list)
-  lt=${#left_list[@]}
-  rc=$(array_distinct_count right_list)
-  rt=${#right_list[@]}
-
-  if (( lc == lt && rc < rt )); then
+  # --- Stage 5: Decide dominant side ---
+  # Prefer the side with full distinct coverage.
+  # If inconclusive, compare Latin letter density.
+  local use_side
+  if (( lc == total && rc < total )); then
     use_side="left"
-  elif (( rc == rt && lc < lt )); then
+  elif (( rc == total && lc < total )); then
     use_side="right"
   else
-    local score=0
-    local llc rlc
-
-    for (( i=0; i<len; i++ )); do
-      llc="$(letter_count "${left_list[i]}" latin)"
-      rlc="$(letter_count "${right_list[i]}" latin)"
+    local llc rlc score=0
+    for (( i=0; i<total; i++ )); do
+      llc=$(letter_count "${left_list[i]}" latin)
+      rlc=$(letter_count "${right_list[i]}" latin)
       (( llc > rlc )) && (( score++ ))
       (( rlc > llc )) && (( score-- ))
     done
-
-    if (( score > 0 )); then
-      use_side="left"
-    else
-      use_side="right"
-    fi
+    (( score > 0 )) && use_side="left" || use_side="right"
   fi
 
-  for (( i=0; i<len; i++ )); do
-    if [[ "$use_side" == 'left' ]]; then
-      title="${left_list[i]}"
-    else
-      title="${right_list[i]}"
-    fi
-    title=$(letter_trim "$title" "0-9\(（\)）\[【\]】")
-    printf '%s%s%s\n' "${ts_list[i]}" "$STRING_SEP" "$title"
+  # --- Stage 6: Rebuild output ---
+  # Reconstruct tracklist using selected title side
+  for (( i=0; i<total; i++ )); do
+    IFS="$STRING_SEP" read -r ts _ <<< "${tracklist[i]}"
+
+    [[ "$use_side" == 'left' ]] && title="${left_list[i]}" || title="${right_list[i]}"
+
+    title=$(letter_trim "$title" "0123456789(（)）[【]】")
+    printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
   done
 }
 
@@ -322,17 +322,19 @@ yt_video_tracklist() {
   [[ -n "$input" ]] || return 0
 
   # __yt_video_tracklist_repeat_process "$input" < <(
-  #   __yt_video_tracklist_bilingual_process < <(
+  #   yt_video_tracklist_bilingual_process < <(
   #     __yt_video_tracklist_resolve < <(
   #       yt_video_description "$input"
   #     )
   #   )
   # )
   
-  yt_video_tracklist_resolve < <(
-    text_demath < <(
-      text_filter "$TIME_TIMESTAMP_REGEX" < <(
-        yt_video_description "$input"
+  yt_video_tracklist_bilingual_process < <(
+    yt_video_tracklist_resolve < <(
+      text_demath < <(
+        text_filter "$TIME_TIMESTAMP_REGEX" < <(
+          yt_video_description "$input"
+        )
       )
     )
   )

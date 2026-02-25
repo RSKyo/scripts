@@ -14,12 +14,28 @@ readonly __TEXT_SEP=$'\x1f'
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/string.source.sh"
 
-# text_expand <regex> [ratio_start] [ratio_end]
-# Expand each line within ratio window (0–1).
+# text_expand <regex> [--window from to]
+# Structured expand of input lines by regex.
 text_expand() {
   local regex="${1:?text_expand: missing regex}"
-  local ratio_start="${2-}"
-  local ratio_end="${3-}"
+  shift
+  local ratio_start=''
+  local ratio_end=''
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --window) 
+        shift
+        [[ $# -ge 2 ]] || return 2
+        ratio_start="$1"
+        ratio_end="$2"
+        shift 2
+        ;;
+      --) shift; break ;;
+      *) break ;;
+    esac
+  done
+
   local line
 
   while IFS= read -r line; do
@@ -27,12 +43,27 @@ text_expand() {
   done
 }
 
-# text_filter <regex> [ratio_start] [ratio_end]
-# If ratio arguments are provided, match within that window only.
+# text_filter <regex> [--window from to]
+# Filter input lines by regex (optionally within a ratio window).
 text_filter() {
   local regex="${1:?text_filter: missing regex}"
-  local ratio_start="${2-}"
-  local ratio_end="${3-}"
+  shift
+  local ratio_start=''
+  local ratio_end=''
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --window) 
+        shift
+        [[ $# -ge 2 ]] || return 2
+        ratio_start="$1"
+        ratio_end="$2"
+        shift 2
+        ;;
+      --) shift; break ;;
+      *) break ;;
+    esac
+  done
 
   local line match
 
@@ -46,12 +77,27 @@ text_filter() {
   done
 }
 
-# text_filter_expand <regex> [ratio_start] [ratio_end]
-# If ratio arguments are provided, match within that window only.
+# text_filter_expand <regex> [--window from to]
+# Filter lines by regex and output structured expand results.
 text_filter_expand() {
-  local regex="${1:?text_filter: missing regex}"
-  local ratio_start="${2-}"
-  local ratio_end="${3-}"
+  local regex="${1:?text_filter_expand: missing regex}"
+  shift
+  local ratio_start=''
+  local ratio_end=''
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --window) 
+        shift
+        [[ $# -ge 2 ]] || return 2
+        ratio_start="$1"
+        ratio_end="$2"
+        shift 2
+        ;;
+      --) shift; break ;;
+      *) break ;;
+    esac
+  done
 
   local line line_expanded
   local match _
@@ -67,14 +113,33 @@ text_filter_expand() {
   done
 }
 
-# text_supports <regex> [ratio_start] [ratio_end] [support]
-# Return 0 if hit ratio ≥ support (default 0.6).
-# Hit ratio is based on all input lines.
+# text_supports <regex> [--window from to] [--support value]
+# Check whether matching lines meet the required support ratio.
 text_supports() {
   local regex="${1:?text_supports: missing regex}"
-  local ratio_start="${2-}"
-  local ratio_end="${3-}"
-  local support="${4:-0.6}"
+  shift
+  local ratio_start=''
+  local ratio_end=''
+  local support='0.6'
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --window) 
+        shift
+        [[ $# -ge 2 ]] || return 2
+        ratio_start="$1"
+        ratio_end="$2"
+        shift 2
+        ;;
+      --support)
+        shift
+        support="$1"
+        shift
+        ;;
+      --) shift; break ;;
+      *) break ;;
+    esac
+  done
  
   local total=0 hits=0
   local line match

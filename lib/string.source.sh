@@ -18,10 +18,10 @@ source "$LIB_DIR/num.source.sh"
 # Internal Helpers (name-ref only)
 # -------------------------------------------------
 
-____string_window() {
-  local -n prefix="$1"
-  local -n window="$2"
-  local -n suffix="$3"
+____string_split_by_ratio() {
+  local -n left="$1"
+  local -n center="$2"
+  local -n right="$3"
 
   local input="$4"
   local ratio_start="$5"
@@ -33,12 +33,12 @@ ____string_window() {
   boundary_from=$(num_product "$len" "$ratio_start" 0)
   boundary_to=$(num_product "$len" "$ratio_end" 0)
 
-  prefix="${input:0:boundary_from}"
-  window="${input:boundary_from:boundary_to-boundary_from}"
-  suffix="${input:boundary_to}"
+  left="${input:0:boundary_from}"
+  center="${input:boundary_from:boundary_to-boundary_from}"
+  right="${input:boundary_to}"
 }
 
-____string_match() {
+____string_split_by_regex() {
   local -n left="$1"
   local -n match="$2"
   local -n right="$3"
@@ -57,25 +57,25 @@ ____string_match() {
   fi
 }
 
-__string_window() {
-  local -n _out_prefix="$1"
-  local -n _out_window="$2"
-  local -n _out_suffix="$3"
+__string_split_by_ratio() {
+  local -n _out_left="$1"
+  local -n _out_center="$2"
+  local -n _out_right="$3"
   shift 3
-  local _inner_prefix
-  local _inner_window
-  local _inner_suffix
-  ____string_window \
-    _inner_prefix \
-    _inner_window \
-    _inner_suffix \
+  local _inner_left
+  local _inner_center
+  local _inner_right
+  ____string_split_by_ratio \
+    _inner_left \
+    _inner_center \
+    _inner_right \
     "$@"
-  _out_prefix="$_inner_prefix"
-  _out_window="$_inner_window"
-  _out_suffix="$_inner_suffix"
+  _out_left="$_inner_left"
+  _out_center="$_inner_center"
+  _out_right="$_inner_right"
 }
 
-__string_match() {
+__string_split_by_regex() {
   local -n _out_left="$1"
   local -n _out_match="$2"
   local -n _out_right="$3"
@@ -83,7 +83,7 @@ __string_match() {
   local _inner_left
   local _inner_match
   local _inner_right
-  ____string_match \
+  ____string_split_by_regex \
     _inner_left \
     _inner_match \
     _inner_right \
@@ -177,8 +177,8 @@ string_random() {
 }
 
 # string_expand <input> <regex> [from_ratio] [to_ratio]
-# Return structured result: left<SEP>match<SEP>right.
-# If ratio arguments are provided, match within that window only.
+# Structured split by <regex>, optionally within a ratio slice.
+# Output: left <SEP> match <SEP> right (always one line).
 string_expand() {
   local input="${1-}"
   local regex="${2:?string_match: missing regex}"
@@ -186,54 +186,44 @@ string_expand() {
   local ratio_end="${4-}"
 
   local sep="$__STRING_SEP"
+  local prefix='' suffix=''
+  local left match right
 
   [[ -z "$input" ]] && {
     printf '%s%s%s%s%s\n' '' "$sep" '' "$sep" ''
     return 0
   }
 
-  local left match right
-
   if [[ -n "$ratio_start" && -n "$ratio_end" ]]; then
-    local prefix window suffix
-
-    __string_window prefix window suffix "$input" "$ratio_start" "$ratio_end"
-    __string_match left match right "$window" "$regex"
-
-    left="$prefix$left"
-    right="$right$suffix"
-  else
-    __string_match left match right "$input" "$regex"
+    __string_split_by_ratio prefix input suffix "$input" "$ratio_start" "$ratio_end"
   fi
 
-  printf '%s%s%s%s%s\n' "$left" "$sep" "$match" "$sep" "$right"
+  __string_split_by_regex left match right "$input" "$regex"
 
-  return 0
+  left="$prefix$left"
+  right="$right$suffix"
+
+  printf '%s%s%s%s%s\n' "$left" "$sep" "$match" "$sep" "$right"
 }
 
 # string_match <input> <regex> [from_ratio] [to_ratio]
-# Return first matched substring.
-# If ratio arguments are provided, match within that window only.
+# Return the first substring matched by <regex>.
+# If ratio bounds are given, matching is restricted to that slice.
+# Always prints one line (empty if no match).
 string_match() {
   local input="${1-}"
   local regex="${2:?string_match: missing regex}"
   local ratio_start="${3-}"
   local ratio_end="${4-}"
+  local match _
 
   [[ -z "$input" ]] && { printf '\n'; return 0; }
 
-  local left match right
-
   if [[ -n "$ratio_start" && -n "$ratio_end" ]]; then
-    local prefix window suffix
-
-    __string_window prefix window suffix "$input" "$ratio_start" "$ratio_end"
-    __string_match left match right "$window" "$regex"
-  else
-    __string_match left match right "$input" "$regex"
+    __string_split_by_ratio _ input _ "$input" "$ratio_start" "$ratio_end"
   fi
 
-  printf '%s\n' "$match"
+  __string_split_by_regex _ match _ "$input" "$regex"
 
-  return 0
+  printf '%s\n' "$match"
 }
