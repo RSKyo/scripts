@@ -36,11 +36,9 @@ source "$LIB_DIR/time.source.sh"
 readonly __YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_FILE="$LIB_DIR/yt/video/repeat_keywords.txt"
 
 __yt_video_tracklist_resolve() {
-  local -a lines
-  readarray -t lines < <(
-    text_filter_expand "$TIME_TIMESTAMP_REGEX"
-  )
-  (( ${#lines[@]} > 0 )) || return 0
+  local -a timestamp_lines
+  readarray -t timestamp_lines
+  (( ${#timestamp_lines[@]} == 0 )) && return 0
 
   local i line _
   local left match right
@@ -51,8 +49,8 @@ __yt_video_tracklist_resolve() {
   local start_idx=-1 end_idx=-1
   local zero_idx=-1 max_sec=-1
 
-  for (( i=0; i<${#lines[@]}; i++ )); do
-    line="${lines[i]}"
+  for (( i=0; i<${#timestamp_lines[@]}; i++ )); do
+    line="${timestamp_lines[i]}"
     IFS="$STRING_SEP" read -r _ match _ <<< "$line"
     match="${match//[[:space:]]/}"
     sec=$(time_hms_to_s "$match")
@@ -66,16 +64,7 @@ __yt_video_tracklist_resolve() {
   done
 
   (( start_idx >=0 )) || return 0
-  tracklist_lines=("${lines[@]:start_idx:$(( end_idx - start_idx + 1 ))}")
-
-  for (( i=0; i<${#tracklist_lines[@]}; i++ )); do
-    line="${tracklist_lines[i]}"
-    IFS="$STRING_SEP" read -r left match right <<< "$line"
-    left=$(letter_demath "$left")
-    right=$(letter_demath "$right")
-
-    tracklist_lines[i]="${left}${STRING_SEP}${match}${STRING_SEP}${right}"
-  done
+  tracklist_lines=("${timestamp_lines[@]:start_idx:$(( end_idx - start_idx + 1 ))}")
 
   # --- Detect timestamp side ---
   local score=0
@@ -329,9 +318,11 @@ yt_video_tracklist() {
   #   )
   # )
   
-  text_demath < <(
-    text_filter_expand "$TIME_TIMESTAMP_REGEX" < <(
-      yt_video_description "$input"
+  __yt_video_tracklist_resolve < <(
+    text_demath < <(
+      text_filter_expand "$TIME_TIMESTAMP_REGEX" < <(
+        yt_video_description "$input"
+      )
     )
   )
 
