@@ -35,13 +35,19 @@ source "$LIB_DIR/time.source.sh"
 
 readonly __YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_FILE="$LIB_DIR/yt/video/repeat_keywords.txt"
 
-__yt_video_tracklist_resolve() {
-  local -a timestamp_lines
-  readarray -t timestamp_lines
-  (( ${#timestamp_lines[@]} == 0 )) && return 0
+yt_video_tracklist_resolve() {
+  local total i line
+  local left ts right title _
 
-  local i line _
-  local left match right
+  # --- Detect timestamp lines and expand ---
+  local -a timestamp_lines
+
+  readarray -t timestamp_lines < <(
+    text_filter_expand "$TIME_TIMESTAMP_REGEX"
+  )
+
+  total=${#timestamp_lines[@]}
+  (( total == 0 )) && return 0
 
   # --- Detect tracklist lines (00:00 -> Maximum) ---
   # Select lines from the segment starting at 00:00 with the largest end timestamp.
@@ -49,22 +55,24 @@ __yt_video_tracklist_resolve() {
   local start_idx=-1 end_idx=-1
   local zero_idx=-1 max_sec=-1
 
-  for (( i=0; i<${#timestamp_lines[@]}; i++ )); do
+  for (( i=0; i<total; i++ )); do
     line="${timestamp_lines[i]}"
-    IFS="$STRING_SEP" read -r _ match _ <<< "$line"
-    match="${match//[[:space:]]/}"
-    sec=$(time_hms_to_s "$match")
+    IFS="$STRING_SEP" read -r _ ts _ <<< "$line"
+    ts="${ts//[[:space:]]/}"
+    sec=$(time_hms_to_s "$ts")
 
     (( sec == 0 )) && zero_idx="$i"
-    if (( sec > max_sec )) && (( zero_idx >= 0 )); then
+    if (( zero_idx >= 0 )) && (( sec > max_sec )); then
       start_idx="$zero_idx"
       end_idx="$i"
       max_sec="$sec"
     fi
   done
 
-  (( start_idx >=0 )) || return 0
+  (( start_idx == -1 )) && return 0
+
   tracklist_lines=("${timestamp_lines[@]:start_idx:$(( end_idx - start_idx + 1 ))}")
+  total=${#tracklist_lines[@]}
 
   # --- Detect timestamp side ---
   local score=0
@@ -78,19 +86,21 @@ __yt_video_tracklist_resolve() {
 
   # --- Normalize and build tracklist ---
   local -a tracklist
-  local ts title
 
   for line in "${tracklist_lines[@]}"; do
-    IFS="$STRING_SEP" read -r left match right <<< "$line"
+    IFS="$STRING_SEP" read -r left ts right <<< "$line"
     
     if (( score > 0 )); then
-      tracklist+=("$match$STRING_SEP$left")
+      tracklist+=("${ts}${STRING_SEP}${left}")
     else
-      tracklist+=("$match$STRING_SEP$right")
+      tracklist+=("${ts}${STRING_SEP}${right}")
     fi
   done
 
   # --- Detect minimal title start ---
+  # Purpose of detecting min_pos:
+  # - Remove leading numeric track indices (e.g. "01 ", "1. ", etc.).
+  # - Avoid stripping digits that legitimately belong to the title (e.g. "1961 Songs").
   local max_pos=9999
   local min_pos="$max_pos"
   local pos 
@@ -102,15 +112,16 @@ __yt_video_tracklist_resolve() {
     (( pos > 0 && pos < min_pos )) && min_pos="$pos"
   done
 
-  (( min_pos < max_pos )) || min_pos=1
+  (( min_pos == max_pos )) && min_pos=1
 
   # --- output trimmed tracklist ---
   for line in "${tracklist[@]}"; do
     IFS="$STRING_SEP" read -r ts title <<< "$line"
 
     ts="${ts//[[:space:]]/}"
-    title=$(string_slice "$title" "$min_pos")
+    title=$(letter_slice "$title" "$min_pos")
     title=$(letter_trim "$title" "0-9\(（\)）\[【\]】")
+    
     printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
   done
 }
@@ -318,9 +329,9 @@ yt_video_tracklist() {
   #   )
   # )
   
-  __yt_video_tracklist_resolve < <(
+  yt_video_tracklist_resolve < <(
     text_demath < <(
-      text_filter_expand "$TIME_TIMESTAMP_REGEX" < <(
+      text_filter "$TIME_TIMESTAMP_REGEX" < <(
         yt_video_description "$input"
       )
     )

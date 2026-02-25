@@ -5,8 +5,8 @@
 # shellcheck disable=SC2016
 
 # Prevent multiple sourcing
-[[ -n "${__LETTER_SOURCED+x}" ]] && return 0
-__LETTER_SOURCED=1
+# [[ -n "${__LETTER_SOURCED+x}" ]] && return 0
+# __LETTER_SOURCED=1
 
 # Normalize user-friendly script names to Unicode Script
 # shellcheck disable=SC2034
@@ -41,6 +41,8 @@ letter_count() {
 
     my $script = shift @ARGV // "";
     my $s = join("", <>);
+    # remove the newline added by <<< (only one)
+    $s =~ s/\n\z//;
 
     my $count;
 
@@ -68,6 +70,8 @@ letter_trim() {
 
     my $extra = shift @ARGV;
     my $s = join("", <>);
+    # remove the newline added by <<< (only one)
+    $s =~ s/\n\z//;
 
     $s =~ s/^[^\p{L}\Q$extra\E]+//;
     $s =~ s/[^\p{L}\Q$extra\E]+$//;
@@ -90,6 +94,8 @@ letter_demath() {
     use Unicode::Normalize;
 
     my $s = join("", <>);
+    # remove the newline added by <<< (only one)
+    $s =~ s/\n\z//;
 
     # Compatibility decomposition
     $s = NFKD($s);
@@ -113,6 +119,8 @@ first_letter_pos() {
     use warnings;
 
     my $s = join("", <>);
+    # remove the newline added by <<< (only one)
+    $s =~ s/\n\z//;
 
     if ($s =~ /(\p{L})/) {
         print (($-[1] + 1) . "\n");
@@ -134,6 +142,8 @@ last_letter_pos() {
     use warnings;
 
     my $s = join("", <>);
+    # remove the newline added by <<< (only one)
+    $s =~ s/\n\z//;
 
     if ($s =~ /(\p{L})(?!.*\p{L})/s) {
       print (($-[1] + 1) . "\n");
@@ -141,4 +151,52 @@ last_letter_pos() {
       print "0\n";
     }
   ' <<< "$input"
+}
+
+# letter_slice <string> <start> [end]
+# Return substring using 1-based character positions.
+# Invalid positions default to 1.
+# If [end] is omitted, slice to end of string.
+# Always returns 0.
+letter_slice() {
+  local input="${1-}"
+  local start="${2-1}"
+  local end="${3-}"
+
+  [[ -n "$input" ]] || { printf '%s\n' ''; return 0; }
+  [[ "$start" =~ ^[1-9][0-9]*$ ]] || start=1
+  [[ "$end" =~ ^[1-9][0-9]*$ ]] || end=
+
+  __perl '
+    use strict;
+    use warnings;
+
+    my $start = shift @ARGV;
+    my $end   = shift @ARGV;
+    my $s     = join("", <>);
+    # remove the newline added by <<< (only one)
+    $s =~ s/\n\z//;
+
+    my $len = length($s);
+
+    $start = 1 if $start < 1;
+
+    # start beyond end of string -> empty
+    if ($start > $len) { print ""; exit 0; }
+
+    # end omitted/invalid -> to end
+    $end = $len if $end eq "";
+
+    # clamp end into [1..len]
+    $end = 1   if $end < 1;
+    $end = $len if $end > $len;
+
+    # end before start -> empty
+    if ($end < $start) { print ""; exit 0; }
+
+    my $offset = $start - 1;
+    my $length = $end - $start + 1;
+
+    print substr($s, $offset, $length), "\n";
+  ' "$start" "$end" <<< "$input"
 }
