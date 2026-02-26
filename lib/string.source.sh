@@ -53,7 +53,7 @@ ____string_split_by_regex() {
   else
     left="$input"
     match=''
-    right=''
+    right="$input"
   fi
 }
 
@@ -176,54 +176,151 @@ string_random() {
   printf '%s\n' "$result"
 }
 
-# string_expand <input> <regex> [from_ratio] [to_ratio]
-# Structured split by <regex>, optionally within a ratio slice.
-# Output: left <SEP> match <SEP> right (always one line).
+# string_expand <input> <pattern> [--window from to]
+# Expand a string by pattern and output structured result.
 string_expand() {
+  # --- Params ---
   local input="${1-}"
-  local regex="${2:?string_match: missing regex}"
-  local ratio_start="${3-}"
-  local ratio_end="${4-}"
+  local regex="${2:?string_expand: missing regex}"
+  shift 2
+  local ratio_start=''
+  local ratio_end=''
 
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --window) 
+        shift
+        [[ $# -ge 2 ]] || return 2
+        ratio_start="$1"
+        ratio_end="$2"
+        shift 2
+        ;;
+      --) shift; break ;;
+      *) return 2 ;;
+    esac
+  done
+
+  # --- Behavior ---
   local sep="$__STRING_SEP"
-  local prefix='' suffix=''
-  local left match right
+  local prefix='' window='' suffix=''
+  local left='' match='' right=''
 
-  [[ -z "$input" ]] && {
-    printf '%s%s%s%s%s\n' '' "$sep" '' "$sep" ''
-    return 0
-  }
+  if [[ -n "$input" && -n "$ratio_start" && -n "$ratio_end" ]]; then
+    __string_split_by_ratio prefix window suffix \
+      "$input" "$ratio_start" "$ratio_end"
 
-  if [[ -n "$ratio_start" && -n "$ratio_end" ]]; then
-    __string_split_by_ratio prefix input suffix "$input" "$ratio_start" "$ratio_end"
+    input="$window"
   fi
 
-  __string_split_by_regex left match right "$input" "$regex"
+  if [[ -n "$input" ]]; then
+    __string_split_by_regex left match right "$input" "$regex"
+  fi
+
+  left="$prefix$left"
+  right="$right$suffix"
+  
+  printf '%s%s%s%s%s\n' "$left" "$sep" "$match" "$sep" "$right"
+}
+
+# string_expand_side <input> <pattern> [--window from to] [--side value]
+# Expand a string and output the selected part.
+string_expand_side() {
+  # --- Params ---
+  local input="${1-}"
+  local regex="${2:?string_expand_side: missing regex}"
+  shift 2
+  local ratio_start=''
+  local ratio_end=''
+  local side='left'
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --window) 
+        shift
+        [[ $# -ge 2 ]] || return 2
+        ratio_start="$1"
+        ratio_end="$2"
+        shift 2
+        ;;
+      --side) 
+        shift
+        [[ $# -ge 1 ]] || return 2
+        case "$1" in
+          left|right) side="$1" ;;
+          *) return 2 ;;
+        esac
+        shift
+        ;;
+      --) shift; break ;;
+      *) return 2 ;;
+    esac
+  done
+
+  # --- Behavior ---
+  local prefix='' window='' suffix=''
+  local left='' match='' right=''
+
+  if [[ -n "$input" && -n "$ratio_start" && -n "$ratio_end" ]]; then
+    __string_split_by_ratio prefix window suffix \
+      "$input" "$ratio_start" "$ratio_end"
+
+    input="$window"
+  fi
+
+  if [[ -n "$input" ]]; then
+    __string_split_by_regex left match right "$input" "$regex"
+  fi
 
   left="$prefix$left"
   right="$right$suffix"
 
-  printf '%s%s%s%s%s\n' "$left" "$sep" "$match" "$sep" "$right"
+  if [[ "$side" == 'left' ]]; then
+    printf '%s\n' "$left"
+  else
+    printf '%s\n' "$right"
+  fi
 }
 
-# string_match <input> <regex> [from_ratio] [to_ratio]
-# Return the first substring matched by <regex>.
-# If ratio bounds are given, matching is restricted to that slice.
-# Always prints one line (empty if no match).
+# string_match <input> <pattern> [--window from to]
+# Return 0 if input matches pattern.
 string_match() {
+  # --- Params ---
   local input="${1-}"
   local regex="${2:?string_match: missing regex}"
-  local ratio_start="${3-}"
-  local ratio_end="${4-}"
-  local match _
+  shift 2
+  local ratio_start=''
+  local ratio_end=''
 
-  [[ -z "$input" ]] && { printf '\n'; return 0; }
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --window)
+        shift
+        [[ $# -ge 2 ]] || return 2
+        ratio_start="$1"
+        ratio_end="$2"
+        shift 2
+        ;;
+      --) shift; break ;;
+      *) return 2 ;;
+    esac
+  done
 
+  # --- Behavior ---
+  [[ -z "$input" ]] && return 1
+
+  local window match _
+  
   if [[ -n "$ratio_start" && -n "$ratio_end" ]]; then
-    __string_split_by_ratio _ input _ "$input" "$ratio_start" "$ratio_end"
+    __string_split_by_ratio _ window _ \
+      "$input" "$ratio_start" "$ratio_end"
+    [[ -z "$window" ]] && return 1
+
+    input="$window"
   fi
 
-  __string_split_by_regex _ match _ "$input" "$regex"
+  __string_split_by_regex _ match _ \
+    "$input" "$regex"
+  [[ -z "$match" ]] && return 1
 
-  printf '%s\n' "$match"
+  return 0
 }

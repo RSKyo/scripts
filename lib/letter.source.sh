@@ -5,8 +5,8 @@
 # shellcheck disable=SC2016
 
 # Prevent multiple sourcing
-# [[ -n "${__LETTER_SOURCED+x}" ]] && return 0
-# __LETTER_SOURCED=1
+[[ -n "${__LETTER_SOURCED+x}" ]] && return 0
+__LETTER_SOURCED=1
 
 # Normalize user-friendly script names to Unicode Script
 # shellcheck disable=SC2034

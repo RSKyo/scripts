@@ -9,14 +9,14 @@
 # __YT_VIDEO_TRACKLIST_SOURCED=1
 
 # Separator regex priority list (first match wins)
-readonly __YT_VIDEO_TRACKLIST_TITLE_SEP_REGEXES=(
-  '[[:space:]]+[-–—－][[:space:]]+'
-  '[-–—－]'
-  '[[:space:]]+\|[[:space:]]+'
-  '\|'
-  '[[:space:]]+\/[[:space:]]+'
-  '\/'
-  '·'
+readonly __YT_TRACKLIST_SEP_CLASSES=(
+  DASH_SP
+  DASH
+  PIPE_SP
+  PIPE
+  SLASH_SP
+  SLASH
+  DOT
 )
 
 __YT_VIDEO_TRACKLIST_REPEAT_REGEX=
@@ -34,7 +34,22 @@ source "$LIB_DIR/time.source.sh"
 
 readonly __YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_FILE="$LIB_DIR/yt/video/repeat_keywords.txt"
 
-yt_video_tracklist_resolve() {
+__yt_tracklist_title_sep_regex() {
+  local cls="$1"
+
+  case "$cls" in
+    DASH_SP)  printf '%s\n' '[[:space:]]+[-–—－][[:space:]]+' ;;
+    DASH)     printf '%s\n' '[-–—－]' ;;
+    PIPE_SP)  printf '%s\n' '[[:space:]]+\|[[:space:]]+' ;;
+    PIPE)     printf '%s\n' '\|' ;;
+    SLASH_SP) printf '%s\n' '[[:space:]]+\/[[:space:]]+' ;;
+    SLASH)    printf '%s\n' '\/' ;;
+    DOT)      printf '%s\n' '·' ;;
+    *) return 2 ;;
+  esac
+}
+
+__yt_video_tracklist_resolve() {
   local total i line
   local left ts right title _
 
@@ -42,7 +57,11 @@ yt_video_tracklist_resolve() {
   local -a timestamp_lines
 
   readarray -t timestamp_lines < <(
-    text_filter_expand "$TIME_TIMESTAMP_REGEX"
+    text_expand "$TIME_TIMESTAMP_REGEX" < <(
+      text_demath < <(
+        text_filter "$TIME_TIMESTAMP_REGEX"
+      )
+    )
   )
 
   total=${#timestamp_lines[@]}
@@ -121,6 +140,24 @@ yt_video_tracklist_resolve() {
     title=$(letter_slice "$title" "$min_pos")
     title=$(letter_trim "$title" "0123456789(（)）[【]】")
     
+    printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
+  done
+}
+
+__yt_video_tracklist_title_split() {
+  local regex="$1"
+  local side="$2"
+
+  local line ts title
+
+  # Read full tracklist (timestamp + title) from stdin
+  local -a tracklist
+  readarray -t tracklist
+
+  for line in "${tracklist[@]}"; do
+    IFS="$STRING_SEP" read -r ts title <<< "$line"
+    title=$(string_expand_side "$title" "$regex" --side "$side")
+
     printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
   done
 }
@@ -318,26 +355,58 @@ __yt_video_tracklist_repeat_regex_build() {
 # Public API
 # -------------------------------------------------
 yt_video_tracklist() {
+  # --- Params ---
   local input="$1"
+  shift
   [[ -n "$input" ]] || return 0
 
-  # __yt_video_tracklist_repeat_process "$input" < <(
-  #   yt_video_tracklist_bilingual_process < <(
-  #     __yt_video_tracklist_resolve < <(
-  #       yt_video_description "$input"
-  #     )
-  #   )
-  # )
+  local title_sep_class=''
+  local side='left'
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --sep) 
+        shift
+        [[ $# -ge 1 ]] || return 2
+        local candidate="${1^^}"
+        if __yt_tracklist_title_sep_regex "$candidate" >/dev/null 2>&1; then
+          title_sep_class="$candidate"
+        else
+          return 2
+        fi
+        shift
+        ;;
+      --side) 
+        shift
+        [[ $# -ge 1 ]] || return 2
+        case "$1" in
+          left|right) side="$1" ;;
+          *) return 2 ;;
+        esac
+        shift
+        ;;
+      --) shift; break ;;
+      *) return 2 ;;
+    esac
+  done
   
-  yt_video_tracklist_bilingual_process < <(
-    yt_video_tracklist_resolve < <(
-      text_demath < <(
-        text_filter "$TIME_TIMESTAMP_REGEX" < <(
-          yt_video_description "$input"
-        )
-      )
-    )
+  # --- Behavior ---
+  local -a tracklist
+
+  readarray -t tracklist < <(
+    yt_video_description "$input" |
+    __yt_video_tracklist_resolve
   )
 
-  return 0
+  (( ${#tracklist[@]} == 0 )) && return 0
+
+  if [[ -n "$title_sep_class" ]]; then
+    local title_sep_regex
+    title_sep_regex=$(__yt_tracklist_title_sep_regex "$title_sep_class")
+
+    printf '%s\n' "${tracklist[@]}" |
+    __yt_video_tracklist_title_split "$title_sep_regex" "$side"
+  else
+    printf '%s\n' "${tracklist[@]}"
+  fi
 }

@@ -8,4 +8,4 @@ continuous
 infinite
 go on
 🔁
-napsea music
+napsea MUSIC
