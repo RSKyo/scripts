@@ -9,21 +9,20 @@
 # __YT_VIDEO_TRACKLIST_SOURCED=1
 
 
-__YT_VIDEO_TRACKLIST_REPEAT_REGEX=
-__YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_MTIME=
-readonly __YT_TRACKLIST_END_TOL_PCT=30
+
 
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/yt/video/description.source.sh"
 source "$LIB_DIR/yt/video/duration.source.sh"
-source "$LIB_DIR/yt/video/tracklist_title.source.sh"
+source "$LIB_DIR/yt/video/tracklist.title.source.sh"
+source "$LIB_DIR/yt/video/tracklist.end.source.sh"
 source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/letter.source.sh"
 source "$LIB_DIR/text.source.sh"
 source "$LIB_DIR/num.source.sh"
 source "$LIB_DIR/time.source.sh"
 
-readonly __YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_FILE="$LIB_DIR/yt/video/repeat_keywords.txt"
+
 
 
 
@@ -122,214 +121,9 @@ __yt_video_tracklist_resolve() {
   done
 }
 
-__yt_video_tracklist_title_split() {
-  local regex="$1"
-  local side="$2"
-
-  # Read full tracklist (timestamp + title) from stdin
-  local -a tracklist
-  readarray -t tracklist
-
-  local line ts title
-
-  for line in "${tracklist[@]}"; do
-    IFS="$STRING_SEP" read -r ts title <<< "$line"
-    title=$(string_expand_side "$title" "$regex" --side "$side")
-
-    printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
-  done
-}
 
 
 
-yt_video_tracklist_bilingual_process() {
-  local total i line
-  local ts title left match right _
-
-  # --- Stage 1: Load input ---
-  # Read full tracklist (timestamp + title) from stdin
-  local -a tracklist
-  readarray -t tracklist
-  total=${#tracklist[@]}
-  (( total == 0 )) && return 0
-
-  # --- Stage 2: Detect separator ---
-  # Identify a bilingual separator regex supported
-  # by the majority of titles
-  local titlelist_stream regex sep_regex
-  titlelist_stream="$(
-    for line in "${tracklist[@]}"; do
-      IFS="$STRING_SEP" read -r _ title <<< "$line"
-      printf '%s\n' "$title"
-    done
-  )"
-
-  for regex in "${__YT_VIDEO_TRACKLIST_TITLE_SEP_REGEXES[@]}"; do
-    text_supports "$regex" --support 0.6 <<< "$titlelist_stream" || continue
-    sep_regex="$regex"
-    break
-  done
-
-  # If no separator detected, output original tracklist
-  [[ -z "$sep_regex" ]] && { printf '%s\n' "${tracklist[@]}" ; return 0; }
-
-  # --- Stage 3: Expand titles ---
-  # Split titles into left / match / right components
-  local -a titlelist
-  readarray -t titlelist < <(
-    text_expand "$sep_regex" <<< "$titlelist_stream"
-  )
-
-  # --- Stage 4: Analyze split structure ---
-  # Collect distinct counts for both sides
-  # to determine structural consistency
-  local -a left_list=()
-  local -a right_list=()
-  declare -A left_seen=()
-  declare -A right_seen=()
-
-  for (( i=0; i<total; i++ )); do
-    IFS="$STRING_SEP" read -r left match right <<< "${titlelist[i]}"
-    [[ -z "$match" ]] && right="$left"
-
-    left_list+=("$left")
-    right_list+=("$right")
-
-    left_seen["$left"]=1
-    right_seen["$right"]=1
-  done
-
-  local lc=${#left_seen[@]}
-  local rc=${#right_seen[@]}
-
-  # --- Stage 5: Decide dominant side ---
-  # Prefer the side with full distinct coverage.
-  # If inconclusive, compare Latin letter density.
-  local use_side
-  if (( lc == total && rc < total )); then
-    use_side="left"
-  elif (( rc == total && lc < total )); then
-    use_side="right"
-  else
-    local llc rlc score=0
-    for (( i=0; i<total; i++ )); do
-      llc=$(letter_count "${left_list[i]}" latin)
-      rlc=$(letter_count "${right_list[i]}" latin)
-      (( llc > rlc )) && (( score++ ))
-      (( rlc > llc )) && (( score-- ))
-    done
-    (( score > 0 )) && use_side="left" || use_side="right"
-  fi
-
-  # --- Stage 6: Rebuild output ---
-  # Reconstruct tracklist using selected title side
-  for (( i=0; i<total; i++ )); do
-    IFS="$STRING_SEP" read -r ts _ <<< "${tracklist[i]}"
-
-    [[ "$use_side" == 'left' ]] && title="${left_list[i]}" || title="${right_list[i]}"
-
-    title=$(letter_trim "$title" "0123456789(（)）[【]】")
-    printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
-  done
-}
-
-__yt_video_tracklist_repeat_process() {
-  local -a tracklist
-  readarray -t tracklist
-  (( ${#tracklist[@]} > 0 )) || return 0
-
-  # --- last timestamp and title ---
-  local last_idx ts title
-  last_idx=$(( ${#tracklist[@]} - 1 ))
-  IFS="$STRING_SEP" read -r ts title <<< "${tracklist[last_idx]}"
-
-  # --- Step 1: fast keyword detection ---
-  local repeat_mode=0 match
-  __yt_video_tracklist_repeat_regex_build
-  [[ -n "$__YT_VIDEO_TRACKLIST_REPEAT_REGEX" ]] || return 0
-  logi "$__YT_VIDEO_TRACKLIST_REPEAT_REGEX"
-
-  local lower_title="${title,,}"
-  local duration duration_hms last_sec
-
-  if [[ "$lower_title" =~ $__YT_VIDEO_TRACKLIST_REPEAT_REGEX ]]; then
-    # ---- Step 1: keyword detection ----
-    repeat_mode=1
-    match="${BASH_REMATCH[0]}"
-    logi "Repeat: last title '$title' matched '$match'"
- else
-    # ---- Step 2: duration fallback ----
-    duration=$(yt_video_duration "$1")
-    num_is_nonneg_number "$duration" || duration=0
-    duration_hms=$(time_s_to_hms "$duration")
-    last_sec=$(time_hms_to_s "$ts")
-
-    if (( duration * 2 > last_sec * 3 )); then
-      repeat_mode=1
-      logi "Repeat: playlist [$ts], duration [$duration_hms], last title '$title'"
-    fi
-  fi
-
-  # --- Apply result ---
-  if (( repeat_mode )); then
-    tracklist[last_idx]="${ts}${STRING_SEP}@repeat"
-  else
-    # detect last track
-   local count den avg remain tol lower upper avg_hms remain_hms
-
-    count=${#tracklist[@]}
-    den=$(( count - 1 ))
-    avg=$(( last_sec / den ))
-    remain=$(( duration - last_sec ))
-
-    tol=$__YT_TRACKLIST_END_TOL_PCT
-    lower=$(( 100 - tol ))
-    upper=$(( 100 + tol ))
-    
-    if (( remain * 100 >= avg * lower &&
-          remain * 100 <= avg * upper )); then
-      tracklist+=("$duration_hms${STRING_SEP}@end")
-    else
-      avg_hms=$(time_s_to_hms "$avg")
-      remain_hms=$(time_s_to_hms "$remain")
-      logi "Skip last track: remain [$remain_hms], avg [$avg_hms]"
-      tracklist[last_idx]="${ts}${STRING_SEP}@end"
-    fi
-  fi
-
-  printf '%s\n' "${tracklist[@]}"
-}
-
-__yt_video_tracklist_repeat_regex_build() {
-  local file="$__YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_FILE"
-  local line
-  local -a words=()
-
-  [[ -f "$file" ]] || return 0
-
-  # ---- get mtime (macOS / Linux) ----
-  local mtime
-  mtime=$(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null) || return 0
-
-  # ---- no change → skip ----
-  [[ "$mtime" == "$__YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_MTIME" ]] && return 0
-
-  # ---- rebuild ----
-  while IFS= read -r line; do
-    [[ -n "$line" ]] || continue
-    [[ "$line" == \#* ]] && continue
-    words+=("$line")
-  done < "$file"
-
-  if (( ${#words[@]} > 0 )); then
-    local IFS='|'
-    __YT_VIDEO_TRACKLIST_REPEAT_REGEX="(${words[*]})"
-  else
-    __YT_VIDEO_TRACKLIST_REPEAT_REGEX=
-  fi
-
-  __YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_MTIME="$mtime"
-}
 
 # -------------------------------------------------
 # Public API
@@ -340,20 +134,39 @@ yt_video_tracklist() {
   shift
   [[ -n "$input" ]] || return 0
 
-  local title_sep_class=''
-  local side='left'
-
+  local auto=0
+  local ratio_start=''
+  local ratio_end=''
+  local support="$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT"
+  local sep_class=''
+  local side=''
+  
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --auto) 
+        shift
+        auto=1
+        ;;
+      --window) 
+        shift
+        [[ $# -ge 2 ]] || return 2
+        ratio_start="$1"
+        ratio_end="$2"
+        shift 2
+        ;;
+      --support)
+        shift
+        [[ $# -ge 1 ]] || return 2
+        support="$1"
+        shift
+        ;;
       --sep) 
         shift
         [[ $# -ge 1 ]] || return 2
-        local candidate="${1^^}"
-        if __yt_tracklist_title_sep_regex "$candidate" >/dev/null 2>&1; then
-          title_sep_class="$candidate"
-        else
-          return 2
-        fi
+        case "$1" in
+          dash_sp|dash|pipe_sp|pipe|slash_sp|slash|dot) sep_class="$1" ;;
+          *) return 2 ;;
+        esac
         shift
         ;;
       --side) 
@@ -371,22 +184,64 @@ yt_video_tracklist() {
   done
   
   # --- Behavior ---
+
+  
   local -a tracklist
+  local total
 
   readarray -t tracklist < <(
     yt_video_description "$input" |
     __yt_video_tracklist_resolve
   )
 
-  (( ${#tracklist[@]} == 0 )) && return 0
+  total=${#tracklist[@]}
+  (( total == 0 )) && return 0
 
-  if [[ -n "$title_sep_class" ]]; then
-    local title_sep_regex
-    title_sep_regex=$(__yt_tracklist_title_sep_regex "$title_sep_class")
+  local -a ts_list=()
+  local -a title_list=()
+  local line ts title
 
-    printf '%s\n' "${tracklist[@]}" |
-    __yt_video_tracklist_title_split "$title_sep_regex" "$side"
-  else
-    printf '%s\n' "${tracklist[@]}"
+  for line in "${tracklist[@]}"; do
+    IFS="$STRING_SEP" read -r ts title <<< "$line"
+    ts_list+=("$ts")
+    title_list+=("$title")
+  done
+
+
+
+  if (( auto == 1 )); then
+    sep_class="$(yt_video_tracklist_title_detect_sep_class \
+      ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
+      ${support:+--support "$support"} \
+      < <(printf '%s\n' "${title_list[@]}") || return 2
+    )"
+
+    if [[ -n "$sep_class" ]]; then
+      side="$(yt_video_tracklist_title_detect_latin_side "$sep_class" \
+        ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
+        < <(printf '%s\n' "${title_list[@]}") || return 2
+      )"
+    fi
   fi
+
+  if [[ -n "$sep_class" && -n "$side" ]]; then
+    local -a side_title_list
+    readarray -t side_title_list < <(
+      yt_video_tracklist_title_process "$sep_class" "$side" \
+        ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
+        < <(printf '%s\n' "${title_list[@]}") || return 2
+    )
+
+    for (( i=0; i<total; i++ )); do
+      ts="${ts_list[i]}"
+      title="${side_title_list[i]}"
+      tracklist[i]="${ts}${STRING_SEP}${title}"
+    done
+  fi
+
+  printf '%s\n' "${tracklist[@]}" | 
+  yt_video_tracklist_end_process "$input"
+
+  
+  
 }
