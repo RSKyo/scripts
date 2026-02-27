@@ -42,7 +42,7 @@ text_expand() {
 
   while IFS= read -r line; do
     string_expand "$line" "$regex" \
-        ${ratio_start:+--window "$ratio_start" "$ratio_end"}
+        ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}}
   done
 }
 
@@ -84,7 +84,7 @@ text_expand_side() {
 
   while IFS= read -r line; do
     string_expand_side "$line" "$regex" \
-      ${ratio_start:+--window "$ratio_start" "$ratio_end"} \
+      ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
       --side "$side"
   done
 }
@@ -119,7 +119,7 @@ text_filter() {
     [[ -z "$line" ]] && continue
 
     string_match "$line" "$regex" \
-        ${ratio_start:+--window "$ratio_start" "$ratio_end"} || continue
+        ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} || continue
 
     printf '%s\n' "$line"
   done
@@ -146,6 +146,7 @@ text_supports() {
         ;;
       --support)
         shift
+        [[ $# -ge 1 ]] || return 2
         support="$1"
         shift
         ;;
@@ -163,7 +164,7 @@ text_supports() {
     [[ -z "$line" ]] && continue
 
     string_match "$line" "$regex" \
-        ${ratio_start:+--window "$ratio_start" "$ratio_end"} || continue
+        ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} || continue
 
     (( hits++ ))
   done
