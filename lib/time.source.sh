@@ -5,8 +5,8 @@
 # shellcheck disable=SC1091,SC2034
 
 # Prevent multiple sourcing
-[[ -n "${__TIME_SOURCED+x}" ]] && return 0
-__TIME_SOURCED=1
+# [[ -n "${__TIME_SOURCED+x}" ]] && return 0
+# __TIME_SOURCED=1
 
 # Match mm:ss or hh:mm:ss (optional spaces around ':')
 readonly __TIME_TIMESTAMP_REGEX='[0-9]+[[:space:]]*:[[:space:]]*[0-5][0-9]([[:space:]]*:[[:space:]]*[0-5][0-9])?'

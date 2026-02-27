@@ -70,10 +70,10 @@ yt_video_tracklist_end_process() {
   local repeat_mode=0
 
   yt_video_tracklist_build_repeat_keywords_regex
-  logi "$__YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_REGEX"
 
   local lower_title="${title,,}"
-  local video_sec video_hms last_sec sec_ratio
+  local -a safe_tracklist=()
+  local video_sec video_hms sec sec_hms last_sec sec_ratio
 
   if [[ "$lower_title" =~ $__YT_VIDEO_TRACKLIST_REPEAT_KEYWORDS_REGEX ]]; then
     # ---- Step 1: keyword detection ----
@@ -84,6 +84,25 @@ yt_video_tracklist_end_process() {
     video_sec=$(yt_video_duration "$url")
     video_sec=$(num_fixed "$video_sec" 0)
     video_hms=$(time_s_to_hms "$video_sec")
+
+    # tracklist ts 有可能大于视频总长
+    for line in "${tracklist[@]}"; do
+      IFS="$STRING_SEP" read -r ts title <<< "$line"
+      sec="$(time_hms_to_s "$ts")"
+      sec_hms="$(time_s_to_hms "$sec")"
+      if (( sec < video_sec )); then
+        safe_tracklist+=("${sec_hms}${STRING_SEP}${title}e")
+      else
+        logi "Track [$sec_hms] '$title' exceeds video duration [$video_hms] — truncated automatically."
+        continue
+      fi
+      
+    done
+    tracklist=("${safe_tracklist[@]}")
+    total=${#tracklist[@]}
+    last_idx=$(( total - 1 ))
+    IFS="$STRING_SEP" read -r ts title <<< "${tracklist[last_idx]}"
+    
     last_sec=$(time_hms_to_s "$ts")
     sec_ratio=$(num_quotient "$video_sec" "$last_sec") || sec_ratio=__YT_VIDEO_TRACKLIST_REPEAT_RATIO
 
@@ -115,7 +134,7 @@ yt_video_tracklist_end_process() {
       tracklist[last_idx]="${ts}${STRING_SEP}@end"
       avg_hms=$(time_s_to_hms "$avg")
       remain_hms=$(time_s_to_hms "$remain")
-      logi "Skip last track: remain [$remain_hms], avg [$avg_hms]"
+      logi "Skip last track: $title [$remain_hms], avg [$avg_hms]"
     fi
   fi
 

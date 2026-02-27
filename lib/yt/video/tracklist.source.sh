@@ -115,7 +115,7 @@ __yt_video_tracklist_resolve() {
 
     ts="${ts//[[:space:]]/}"
     title=$(letter_slice "$title" "$min_pos")
-    title=$(letter_trim "$title" "0123456789(（)）[【]】")
+    title=$(letter_trim "$title" "0123456789)）]】")
     
     printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
   done
