@@ -8,7 +8,7 @@
 # __YT_VIDEO_TRACKLIST_TITLE_SOURCED=1
 
 # Separator regex priority list (first match wins)
-readonly __YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES=(
+readonly __YT_TRACKLIST_TITLE_SEP_CLASSES=(
   DASH_SP
   DASH
   PIPE_SP
@@ -18,7 +18,7 @@ readonly __YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES=(
   DOT
 )
 
-__yt_video_tracklist_title_get_regex() {
+__yt_tracklist_title_get_regex() {
   local cls="$1"
 
   case "$cls" in
@@ -33,7 +33,7 @@ __yt_video_tracklist_title_get_regex() {
   esac
 }
 
-yt_video_tracklist_detect_title_sep_class() {
+yt_tracklist_detect_title_sep_class() {
   # --- Params ---
   local ratio_start=''
   local ratio_end=''
