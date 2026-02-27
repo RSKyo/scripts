@@ -89,14 +89,13 @@ yt_video_tracklist_end_process() {
     for line in "${tracklist[@]}"; do
       IFS="$STRING_SEP" read -r ts title <<< "$line"
       sec="$(time_hms_to_s "$ts")"
-      sec_hms="$(time_s_to_hms "$sec")"
       if (( sec < video_sec )); then
         safe_tracklist+=("${sec_hms}${STRING_SEP}${title}e")
       else
+        sec_hms="$(time_s_to_hms "$sec")"
         logi "Track [$sec_hms] '$title' exceeds video duration [$video_hms] — truncated automatically."
         continue
       fi
-      
     done
     tracklist=("${safe_tracklist[@]}")
     total=${#tracklist[@]}
