@@ -8,8 +8,7 @@
 [[ -n "${__STRING_SOURCED+x}" ]] && return 0
 __STRING_SOURCED=1
 
-# Internal field separator.
-readonly __STRING_SEP=$'\x1f'
+readonly STRING_SEP=$'\x1f'
 
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/num.source.sh"
@@ -96,9 +95,6 @@ __string_split_by_regex() {
 # -------------------------------------------------
 # Public API (stdout interface)
 # -------------------------------------------------
-
-# Expose internal separator as public constant (read-only).
-readonly STRING_SEP="$__STRING_SEP"
 
 # string_trim <input>
 # Trim leading and trailing whitespace.
@@ -201,7 +197,7 @@ string_expand() {
   done
 
   # --- Behavior ---
-  local sep="$__STRING_SEP"
+  local sep="$STRING_SEP"
   local prefix='' window='' suffix=''
   local left='' match='' right=''
 

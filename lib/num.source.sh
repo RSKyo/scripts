@@ -7,7 +7,7 @@
 __NUM_SOURCED=1
 
 # Internal calculation scale.
-__NUM_CALC_SCALE=6
+readonly __NUM_CALC_SCALE=6
 
 # -------------------------------------------------
 # Internal Helpers (name-ref only)

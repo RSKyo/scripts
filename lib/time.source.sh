@@ -5,11 +5,8 @@
 # shellcheck disable=SC1091,SC2034
 
 # Prevent multiple sourcing
-# [[ -n "${__TIME_SOURCED+x}" ]] && return 0
-# __TIME_SOURCED=1
-
-# Match mm:ss or hh:mm:ss (optional spaces around ':')
-readonly __TIME_TIMESTAMP_REGEX='[0-9]+[[:space:]]*:[[:space:]]*[0-5][0-9]([[:space:]]*:[[:space:]]*[0-5][0-9])?'
+[[ -n "${__TIME_SOURCED+x}" ]] && return 0
+__TIME_SOURCED=1
 
 # Time unit scales (base: milliseconds)
 readonly __TIME_SCALE_ms=1
@@ -17,8 +14,8 @@ readonly __TIME_SCALE_s=1000
 readonly __TIME_SCALE_m=$((60*1000))
 readonly __TIME_SCALE_h=$((3600*1000))
 
-# Expose internal separator as public constant (read-only).
-readonly TIME_TIMESTAMP_REGEX="$__TIME_TIMESTAMP_REGEX"
+# Match mm:ss or hh:mm:ss (optional spaces around ':')
+readonly TIME_TIMESTAMP_REGEX='[0-9]+[[:space:]]*:[[:space:]]*[0-5][0-9]([[:space:]]*:[[:space:]]*[0-5][0-9])?'
 
 # time_normalize <time_string>
 # Remove all whitespace from time string.

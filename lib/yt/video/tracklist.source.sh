@@ -1,58 +1,49 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1090,SC1091
 # Source-only library: yt.video.tracklist
+# shellcheck disable=SC1091
 
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-# [[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
-# __YT_VIDEO_TRACKLIST_SOURCED=1
-
-
-
+[[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
+__YT_VIDEO_TRACKLIST_SOURCED=1
 
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/yt/video/description.source.sh"
-source "$LIB_DIR/yt/video/duration.source.sh"
 source "$LIB_DIR/yt/video/tracklist.title.source.sh"
 source "$LIB_DIR/yt/video/tracklist.end.source.sh"
 source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/letter.source.sh"
 source "$LIB_DIR/text.source.sh"
-source "$LIB_DIR/num.source.sh"
 source "$LIB_DIR/time.source.sh"
 
-
-
-
-
-__yt_video_tracklist_resolve() {
+yt_video_tracklist_resolve() {
   local total i line
-  local left ts right title _
+  local left ts right sec title _
 
-  # --- Detect timestamp lines and expand ---
+  # --- Extract timestamp lines ---
+  # Keep only lines containing timestamps and
+  # normalize into structured parts.
   local -a timestamp_lines
 
   readarray -t timestamp_lines < <(
-    text_expand "$TIME_TIMESTAMP_REGEX" < <(
-      text_demath < <(
-        text_filter "$TIME_TIMESTAMP_REGEX"
-      )
-    )
+    text_filter "$TIME_TIMESTAMP_REGEX" |
+    text_demath |
+    text_expand "$TIME_TIMESTAMP_REGEX"
   )
 
   total=${#timestamp_lines[@]}
   (( total == 0 )) && return 0
 
-  # --- Detect tracklist lines (00:00 -> Maximum) ---
-  # Select lines from the segment starting at 00:00 with the largest end timestamp.
+  # --- Locate main tracklist segment ---
+  # Find the segment starting at 00:00 and
+  # ending at the largest timestamp.
   local -a tracklist_lines
   local start_idx=-1 end_idx=-1
   local zero_idx=-1 max_sec=-1
 
   for (( i=0; i<total; i++ )); do
-    line="${timestamp_lines[i]}"
-    IFS="$STRING_SEP" read -r _ ts _ <<< "$line"
+    IFS="$STRING_SEP" read -r _ ts _ <<< "${timestamp_lines[i]}"
     ts="${ts//[[:space:]]/}"
     sec=$(time_hms_to_s "$ts")
 
@@ -70,6 +61,7 @@ __yt_video_tracklist_resolve() {
   total=${#tracklist_lines[@]}
 
   # --- Detect timestamp side ---
+  # Infer whether timestamp is on left or right.
   local score=0
 
   for line in "${tracklist_lines[@]}"; do
@@ -79,55 +71,51 @@ __yt_video_tracklist_resolve() {
     (( ${#right} > ${#left} )) && (( score-- ))
   done
 
-  # --- Normalize and build tracklist ---
+  # --- Build internal structure ---
+  # <sec><sep><ts><sep><title>
   local -a tracklist
 
   for line in "${tracklist_lines[@]}"; do
     IFS="$STRING_SEP" read -r left ts right <<< "$line"
-    
+    ts="${ts//[[:space:]]/}"
+    sec="$(time_hms_to_s "$ts")"
+    ts="$(time_s_to_hms "$sec")"
+
     if (( score > 0 )); then
-      tracklist+=("${ts}${STRING_SEP}${left}")
+      tracklist+=("${sec}${STRING_SEP}${ts}${STRING_SEP}${left}")
     else
-      tracklist+=("${ts}${STRING_SEP}${right}")
+      tracklist+=("${sec}${STRING_SEP}${ts}${STRING_SEP}${right}")
     fi
   done
 
-  # --- Detect minimal title start ---
-  # Purpose of detecting min_pos:
-  # - Remove leading numeric track indices (e.g. "01 ", "1. ", etc.).
-  # - Avoid stripping digits that legitimately belong to the title (e.g. "1961 Songs").
-  local max_pos=9999
-  local min_pos="$max_pos"
-  local pos 
+  # --- Detect minimal letter start ---
+  # Used to remove leading track indices
+  # while preserving valid digits in titles.
+  local min_pos=0 pos
 
   for line in "${tracklist[@]}"; do
-    IFS="$STRING_SEP" read -r ts title <<< "$line"
-
+    IFS="$STRING_SEP" read -r sec ts title <<< "$line"
     pos="$(first_letter_pos "$title")" || continue
-    (( pos > 0 && pos < min_pos )) && min_pos="$pos"
+    if (( min_pos == 0 )) || (( pos < min_pos )); then
+      min_pos="$pos"
+      (( min_pos == 1 )) && break
+    fi
   done
 
-  (( min_pos == max_pos )) && min_pos=1
+  (( min_pos == 0 )) && min_pos=1
 
-  # --- output trimmed tracklist ---
+  # --- Output cleaned tracklist ---
+  # Apply title trimming and emit final structure.
   for line in "${tracklist[@]}"; do
-    IFS="$STRING_SEP" read -r ts title <<< "$line"
-
-    ts="${ts//[[:space:]]/}"
+    IFS="$STRING_SEP" read -r sec ts title <<< "$line"
     title=$(letter_slice "$title" "$min_pos")
     title=$(letter_trim "$title" "0123456789)）]】")
     
-    printf '%s%s%s\n' "$ts" "$STRING_SEP" "$title"
+    printf '%s%s%s%s%s\n' "$sec" "$STRING_SEP" "$ts" "$STRING_SEP" "$title"
   done
 }
 
 
-
-
-
-# -------------------------------------------------
-# Public API
-# -------------------------------------------------
 yt_video_tracklist() {
   # --- Params ---
   local input="$1"
@@ -138,7 +126,7 @@ yt_video_tracklist() {
   local ratio_start=''
   local ratio_end=''
   local support="$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT"
-  local sep_class=''
+  local sep_regex=''
   local side=''
   
   while [[ $# -gt 0 ]]; do
@@ -164,7 +152,8 @@ yt_video_tracklist() {
         shift
         [[ $# -ge 1 ]] || return 2
         case "$1" in
-          dash_sp|dash|pipe_sp|pipe|slash_sp|slash|dot) sep_class="$1" ;;
+          dash_sp|dash|pipe_sp|pipe|slash_sp|slash|dot) \
+          sep_regex="${YT_VIDEO_TRACKLIST_TITLE_SEP_MAP[$1]}" ;;
           *) return 2 ;;
         esac
         shift
@@ -184,64 +173,39 @@ yt_video_tracklist() {
   done
   
   # --- Behavior ---
-
-  
+  # --- Load normalized tracklist from description ---
   local -a tracklist
-  local total
-
   readarray -t tracklist < <(
     yt_video_description "$input" |
-    __yt_video_tracklist_resolve
+    yt_video_tracklist_resolve
   )
 
-  total=${#tracklist[@]}
+  local total=${#tracklist[@]}
   (( total == 0 )) && return 0
 
-  local -a ts_list=()
-  local -a title_list=()
-  local line ts title
-
-  for line in "${tracklist[@]}"; do
-    IFS="$STRING_SEP" read -r ts title <<< "$line"
-    ts_list+=("$ts")
-    title_list+=("$title")
-  done
-
-
-
-  if (( auto == 1 )); then
-    sep_class="$(yt_video_tracklist_title_detect_sep_class \
+  # --- Auto-detect bilingual separator and side ---
+  if (( auto )); then
+    sep_regex="$(yt_video_tracklist_title_detect_sep \
       ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
       ${support:+--support "$support"} \
-      < <(printf '%s\n' "${title_list[@]}") || return 2
+      < <(printf '%s\n' "${tracklist[@]}") || return 2
     )"
 
-    if [[ -n "$sep_class" ]]; then
-      side="$(yt_video_tracklist_title_detect_latin_side "$sep_class" \
+    if [[ -n "$sep_regex" ]]; then
+      side="$(yt_video_tracklist_title_detect_latin_side "$sep_regex" \
         ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
-        < <(printf '%s\n' "${title_list[@]}") || return 2
+        < <(printf '%s\n' "${tracklist[@]}") || return 2
       )"
     fi
   fi
 
-  if [[ -n "$sep_class" && -n "$side" ]]; then
-    local -a side_title_list
-    readarray -t side_title_list < <(
-      yt_video_tracklist_title_process "$sep_class" "$side" \
-        ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
-        < <(printf '%s\n' "${title_list[@]}") || return 2
-    )
-
-    for (( i=0; i<total; i++ )); do
-      ts="${ts_list[i]}"
-      title="${side_title_list[i]}"
-      tracklist[i]="${ts}${STRING_SEP}${title}"
-    done
+  if [[ -n "$sep_regex" && -n "$side" ]]; then
+    printf '%s\n' "${tracklist[@]}" |
+    yt_video_tracklist_title_process "$sep_regex" "$side" \
+      ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} |
+    yt_video_tracklist_end_process "$input"
+  else
+    printf '%s\n' "${tracklist[@]}" |
+    yt_video_tracklist_end_process "$input"
   fi
-
-  printf '%s\n' "${tracklist[@]}" | 
-  yt_video_tracklist_end_process "$input"
-
-  
-  
 }

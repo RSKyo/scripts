@@ -4,15 +4,13 @@
 # -------------------------------------------------
 # Prevent multiple sourcing
 # -------------------------------------------------
-# [[ -n "${__YT_VIDEO_TRACKLIST_TITLE_SOURCED+x}" ]] && return 0
-# __YT_VIDEO_TRACKLIST_TITLE_SOURCED=1
+[[ -n "${__YT_VIDEO_TRACKLIST_TITLE_SOURCED+x}" ]] && return 0
+__YT_VIDEO_TRACKLIST_TITLE_SOURCED=1
 
-readonly __YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT=0.6
-# shellcheck disable=SC2034
-readonly YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT="$__YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT"
+readonly YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT=0.6
 
 # Separator regex priority list (first match wins)
-readonly __YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES=(
+readonly YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES=(
   dash_sp
   dash
   pipe_sp
@@ -22,47 +20,30 @@ readonly __YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES=(
   dot
 )
 
-____yt_video_tracklist_title_get_sep_regex() {
-  local -n regex="$1"
-  local cls="$2"
+declare -Ar YT_VIDEO_TRACKLIST_TITLE_SEP_MAP=(
+  [dash_sp]='[[:space:]]+[-–—－][[:space:]]+'
+  [dash]='[-–—－]'
+  [pipe_sp]='[[:space:]]+\|[[:space:]]+'
+  [pipe]='\|'
+  [slash_sp]='[[:space:]]+\/[[:space:]]+'
+  [slash]='\/'
+  [dot]='·'
+)
 
-  case "$cls" in
-    dash_sp)  regex='[[:space:]]+[-–—－][[:space:]]+' ;;
-    dash)     regex='[-–—－]' ;;
-    pipe_sp)  regex='[[:space:]]+\|[[:space:]]+' ;;
-    pipe)     regex='\|' ;;
-    slash_sp) regex='[[:space:]]+\/[[:space:]]+' ;;
-    slash)    regex='\/' ;;
-    dot)      regex='·' ;;
-    *) return 2 ;;
-  esac
-}
+# -------------------------------------------------
+# Public API (stdout interface)
+# -------------------------------------------------
 
-__yt_video_tracklist_title_get_sep_regex() {
-  local -n _out_regex="$1"
-  shift 1
-  local _inner_regex
-  ____yt_video_tracklist_title_get_sep_regex \
-    _inner_regex \
-    "$@" || return 2
-  _out_regex="$_inner_regex"
-}
-
-yt_video_tracklist_title_get_sep_regex() {
-  local cls="$1"
-  local regex
-  __yt_video_tracklist_title_get_sep_regex regex "$cls"
-  printf '%s\n' "$regex"
-}
-
-
-
-yt_video_tracklist_title_detect_sep_class() {
+# Detect title separator regex
+# stdin : <sec><sep><ts><sep><title>
+# stdout: regex
+yt_video_tracklist_title_detect_sep() {
   # --- Params ---
   local ratio_start=''
   local ratio_end=''
-  local support="$__YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT"
+  local support="$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT"
 
+  # --- Parse options ---
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --window) 
@@ -83,33 +64,41 @@ yt_video_tracklist_title_detect_sep_class() {
     esac
   done
   
-  # --- Behavior ---
-  local title_stream
-  title_stream="$(cat)"
-
-  local cls regex found=''
-  for cls in "${__YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES[@]}"; do
-    __yt_video_tracklist_title_get_sep_regex regex "$cls" || continue
-
-    text_supports "$regex" \
-      ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
-      --support "$support" \
-    <<< "$title_stream" || continue
-
-    found="$cls"
-    break
+  # --- Extract titles ---
+  local -a title_list=()
+  local title _
+  while IFS= read -r line; do
+    IFS="$STRING_SEP" read -r _ _ title <<< "$line"
+    title_list+=("$title")
   done
 
-  printf '%s\n' "$found"
+  local cls regex=''
+  for cls in "${YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES[@]}"; do
+    regex="${YT_VIDEO_TRACKLIST_TITLE_SEP_MAP[$cls]}"
+    [[ -n "$regex" ]] || continue
+
+    if text_supports "$regex" \
+        ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
+        --support "$support" \
+        < <(printf '%s\n' "${title_list[@]}"); then
+
+      printf '%s\n' "$regex"
+      break
+    fi
+  done
 }
 
+# Detect which side contains Latin text
+# stdin : <sec><sep><ts><sep><title>
+# stdout: left | right
 yt_video_tracklist_title_detect_latin_side() {
   # --- Params ---
-  local sep_class="$1"
+  local regex="$1"
   shift 1
   local ratio_start=''
   local ratio_end=''
 
+  # --- Parse options ---
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --window) 
@@ -124,64 +113,75 @@ yt_video_tracklist_title_detect_latin_side() {
     esac
   done
 
-  # --- Behavior ---
-  local sep_regex
-  __yt_video_tracklist_title_get_sep_regex sep_regex "$sep_class" || return 2
+  # --- Extract titles ---
+  local -a title_list=()
+  local title _
+  while IFS= read -r line; do
+    IFS="$STRING_SEP" read -r _ _ title <<< "$line"
+    title_list+=("$title")
+  done
 
-  local side total=0 lc rc llc rlc score
-  local line title_expanded left right _ 
-  local -a left_list=()
-  local -a right_list=()
+  # --- Uniqueness check ---
+  local line title title_expanded left right _ 
   declare -A left_seen=()
   declare -A right_seen=()
 
-  while IFS= read -r line; do
-    (( total++ ))
-
-    title_expanded="$(\
-      string_expand "$line" "$sep_regex" \
-      ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
-    )"
+  for line in "${title_list[@]}"; do
+    title_expanded="$(string_expand "$line" "$regex" \
+      ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}})"
 
     IFS="$STRING_SEP" read -r left _ right <<< "$title_expanded"
-
-    left_list+=("$left")
-    right_list+=("$right")
 
     left_seen["$left"]=1
     right_seen["$right"]=1
   done
 
+  # --- Decide by uniqueness ---
+  local total lc rc
+  total="${#title_list[@]}"
   lc=${#left_seen[@]}
   rc=${#right_seen[@]}
 
   if (( lc == total && rc < total )); then
-    side="left"
-  elif (( rc == total && lc < total )); then
-    side="right"
-  else
-    llc=0 rlc=0 score=0
-    for (( i=0; i<total; i++ )); do
-      llc=$(letter_count "${left_list[i]}" latin)
-      rlc=$(letter_count "${right_list[i]}" latin)
-      (( llc > rlc )) && (( score++ ))
-      (( rlc > llc )) && (( score-- ))
-    done
-    (( score >= 0 )) && side="left" || side="right"
+    printf '%s\n' left
+    return 0
   fi
 
-  printf '%s\n' "$side"
+  if (( rc == total && lc < total )); then
+    printf '%s\n' right
+    return 0
+  fi
+
+  # --- Fallback: Latin scoring ---
+  local llc=0 rlc=0 score=0
+
+  for line in "${title_list[@]}"; do
+    title_expanded="$(string_expand "$line" "$regex" \
+      ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}})"
+
+    IFS="$STRING_SEP" read -r left _ right <<< "$title_expanded"
+
+    llc=$(letter_count "$left" latin)
+    rlc=$(letter_count "$right" latin)
+    (( llc > rlc )) && (( score++ ))
+    (( rlc > llc )) && (( score-- ))
+  done
+
+  (( score >= 0 )) && printf '%s\n' left || printf '%s\n' right
 }
 
-
+# Normalize title by detected side
+# stdin : <sec><sep><ts><sep><title>
+# stdout: <sec><sep><ts><sep><title>
 yt_video_tracklist_title_process() {
   # --- Params ---
-  local sep_class="$1"
+  local regex="$1"
   local side="$2"
   shift 2
   local ratio_start=''
   local ratio_end=''
 
+  # --- Parse options ---
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --window) 
@@ -196,13 +196,16 @@ yt_video_tracklist_title_process() {
     esac
   done
 
-  # --- Behavior ---
-  local sep_regex
-  __yt_video_tracklist_title_get_sep_regex sep_regex "$sep_class" || return 2
-
+  # --- Process lines ---
+  local sec ts title title_side
   while IFS= read -r line; do
-    string_expand_side "$line" "$sep_regex" \
+    IFS="$STRING_SEP" read -r sec ts title <<< "$line"
+
+    title_side="$(string_expand_side "$title" "$regex" \
       ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} \
-      --side "$side"
+      --side "$side")"
+
+    printf '%s%s%s%s%s\n' \
+      "$sec" "$STRING_SEP" "$ts" "$STRING_SEP" "$title_side"
   done
 }

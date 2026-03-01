@@ -8,9 +8,6 @@
 [[ -n "${__TEXT_SOURCED+x}" ]] && return 0
 __TEXT_SOURCED=1
 
-# Internal field separator.
-readonly __TEXT_SEP=$'\x1f'
-
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/string.source.sh"
 
