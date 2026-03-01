@@ -115,6 +115,18 @@ yt_video_tracklist_resolve() {
   done
 }
 
+yt_video_tracklist_output() {
+  local dir="$1"
+  local id="$2"
+
+  if [[ -n "$dir" && -n "$id" ]]; then
+    mkdir -p "$dir" || return 1
+    tee "$dir/${id}.tracklist.txt"
+  else
+    cat
+  fi
+}
+
 
 yt_video_tracklist() {
   # --- Params ---
@@ -128,6 +140,7 @@ yt_video_tracklist() {
   local support="$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT"
   local sep_regex=''
   local side=''
+  local out
   
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -167,6 +180,12 @@ yt_video_tracklist() {
         esac
         shift
         ;;
+      --out) 
+        shift
+        [[ $# -ge 1 ]] || return 2
+        out="$1"
+        shift
+        ;;
       --) shift; break ;;
       *) return 2 ;;
     esac
@@ -199,13 +218,18 @@ yt_video_tracklist() {
     fi
   fi
 
+  local id
+  id=$(yt_video_id "$input")
+
   if [[ -n "$sep_regex" && -n "$side" ]]; then
     printf '%s\n' "${tracklist[@]}" |
     yt_video_tracklist_title_process "$sep_regex" "$side" \
       ${ratio_start:+${ratio_end:+--window "$ratio_start" "$ratio_end"}} |
-    yt_video_tracklist_end_process "$input"
+    yt_video_tracklist_end_process "$input" |
+    yt_video_tracklist_output "$out" "$id"
   else
     printf '%s\n' "${tracklist[@]}" |
-    yt_video_tracklist_end_process "$input"
+    yt_video_tracklist_end_process "$input" |
+    yt_video_tracklist_output "$out" "$id"
   fi
 }

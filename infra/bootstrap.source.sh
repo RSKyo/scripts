@@ -1,85 +1,81 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1090,SC1091
-# Source-only library: bootstrap
-#
-# Role:
-# - Initialize runtime context for this repository
-# - Define project root and directory layout
-# - Detect or accept target platform
-# - Bind and export required repo-local external tools
-#
-# Contract:
-# - Must be sourced (not executed)
-# - PLATFORM may be preset by caller; otherwise detected at runtime
-# - On success, common paths and tool variables are available
-# - On failure, exits with non-zero status
+# shellcheck disable=SC1091,SC2034
+# bootstrap (source-only)
+# Initialize project paths, platform, and required binaries.
 
-# -------------------------------------------------
+set -o pipefail
+
 # Prevent multiple sourcing
-# -------------------------------------------------
 [[ -n "${__BOOTSTRAP_SOURCED+x}" ]] && return 0
 __BOOTSTRAP_SOURCED=1
 
-# -------------------------------------------------
-# Resolve project directories
-# -------------------------------------------------
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+# Directories
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)" || exit 1
 INFRA_DIR="$ROOT_DIR/infra"
 LIB_DIR="$ROOT_DIR/lib"
 ACTION_DIR="$ROOT_DIR/action"
 BIN_DIR="$ROOT_DIR/bin"
 
-export ROOT_DIR INFRA_DIR LIB_DIR ACTION_DIR BIN_DIR
+readonly ROOT_DIR INFRA_DIR LIB_DIR ACTION_DIR BIN_DIR
 
-# -------------------------------------------------
 # Logging
-# -------------------------------------------------
 source "$INFRA_DIR/log.source.sh"
 
-# -------------------------------------------------
-# Platform detection (allow preset)
-# -------------------------------------------------
+# Platform
 if [[ -z "${PLATFORM:-}" ]]; then
   case "$(uname -s)" in
     Darwin)  PLATFORM="darwin" ;;
     Linux)   PLATFORM="linux" ;;
     MINGW*|MSYS*|CYGWIN*) PLATFORM="windows" ;;
-    *) echo "Unsupported platform" >&2; exit 1 ;;
+    *)
+      loge "BOOTSTRAP" "Unsupported platform: $(uname -s)"
+      exit 1
+      ;;
   esac
 fi
 
-export PLATFORM
+readonly PLATFORM
 
-# -------------------------------------------------
-# Resolve binaries (exact filenames)
-# -------------------------------------------------
+# Binaries
+BIN_PLATFORM_DIR="$BIN_DIR/$PLATFORM"
+readonly BIN_PLATFORM_DIR
+
 case "$PLATFORM" in
   darwin)
-    yt_dlp="$BIN_DIR/$PLATFORM/yt-dlp"
-    ffmpeg="$BIN_DIR/$PLATFORM/ffmpeg"
-    ffprobe="$BIN_DIR/$PLATFORM/ffprobe"
-    jq="$BIN_DIR/$PLATFORM/jq-macos-amd64"
+    yt_dlp="$BIN_PLATFORM_DIR/yt-dlp"
+    ffmpeg="$BIN_PLATFORM_DIR/ffmpeg"
+    ffprobe="$BIN_PLATFORM_DIR/ffprobe"
+    jq_bin="$BIN_PLATFORM_DIR/jq-macos-amd64"
     ;;
   linux)
-    yt_dlp="$BIN_DIR/$PLATFORM/yt-dlp_linux"
-    ffmpeg="$BIN_DIR/$PLATFORM/ffmpeg"
-    ffprobe="$BIN_DIR/$PLATFORM/ffprobe"
-    jq="$BIN_DIR/$PLATFORM/jq-linux-amd64"
+    yt_dlp="$BIN_PLATFORM_DIR/yt-dlp_linux"
+    ffmpeg="$BIN_PLATFORM_DIR/ffmpeg"
+    ffprobe="$BIN_PLATFORM_DIR/ffprobe"
+    jq_bin="$BIN_PLATFORM_DIR/jq-linux-amd64"
     ;;
   windows)
-    yt_dlp="$BIN_DIR/$PLATFORM/yt-dlp.exe"
-    ffmpeg="$BIN_DIR/$PLATFORM/ffmpeg.exe"
-    ffprobe="$BIN_DIR/$PLATFORM/ffprobe.exe"
-    jq="$BIN_DIR/$PLATFORM/jq-win64.exe"
+    yt_dlp="$BIN_PLATFORM_DIR/yt-dlp.exe"
+    ffmpeg="$BIN_PLATFORM_DIR/ffmpeg.exe"
+    ffprobe="$BIN_PLATFORM_DIR/ffprobe.exe"
+    jq_bin="$BIN_PLATFORM_DIR/jq-win64.exe"
+    ;;
+  *)
+    loge "[bootstrap] unsupported platform: $PLATFORM"
+    exit 1
     ;;
 esac
 
-export yt_dlp ffmpeg ffprobe jq
+for bin in yt_dlp ffmpeg ffprobe jq_bin; do
+  path="${!bin}"
+  if [[ ! -x "$path" ]]; then
+    loge "BOOTSTRAP" "Executable not found or not runnable: $path"
+    exit 1
+  fi
+done
 
-# -------------------------------------------------
-# External interpreters (capability wrappers)
-# -------------------------------------------------
+readonly yt_dlp ffmpeg ffprobe jq_bin
 
+# Wrappers
 __require_cmd() {
   local cmd="$1"
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -89,11 +85,11 @@ __require_cmd() {
 }
 
 __perl() {
-  __require_cmd perl || return $?
-  perl -CS -Mutf8 -e "$1" "${@:2}"
+  __require_cmd perl || return 127
+  command perl -CS -Mutf8 -e "$1" "${@:2}"
 }
 
 __awk() {
-  __require_cmd awk || return $?
-  awk "$@"
+  __require_cmd awk || return 127
+  command awk "$@"
 }
