@@ -5,51 +5,61 @@
 [[ -n "${__FILE_SOURCED+x}" ]] && return 0
 __FILE_SOURCED=1
 
-file_tee() {
-  local dir="$1"
-  local file_name="$2"
-  shift 2
-
-  # Fallback: stdout only
-  if [[ -z "$dir" || -z "$file_name" ]]; then
-    logi "Missing directory or file name, fallback to stdout only."
-    cat
-    return 0
-  fi
-
-  mkdir -p "$dir"
-  local path="$dir/$file_name"
-
-  local append=0
-  [[ "${1:-}" == "--append" ]] && append=1 && shift
-
-  if (( append )); then
-    tee -a "$path"
-  else
-    tee "$path"
-  fi
-}
-
 file_write() {
-  local dir="$1"
-  local file_name="$2"
-  shift 2
+  local file_name="${1:?file_write: missing file name}"
+  shift
+  local dir="$YT_CACHE_DIR"
 
-  if [[ -z "$dir" || -z "$file_name" ]]; then
-    logi "Missing directory or file name, nothing written."
-    cat >/dev/null
-    return 0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dir) 
+        shift
+        [[ $# -ge 1 ]] || return 2
+        dir="$1"
+        shift
+        ;;
+      --) shift; break ;;
+      *) return 2 ;;
+    esac
+  done
+  
+  local append=0
+  local tee=0
+  
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --append)
+        shift
+        append=1
+        ;;
+      --tee)
+        shift
+        tee=1
+        ;;
+      --) shift; break ;;
+      *) return 2 ;;
+    esac
+  done
+
+  mkdir -p "$dir" || {
+    loge "Cannot create directory: $dir"
+    return 1
+  }
+
+  local file_path="$dir/$file_name"
+
+  if (( tee )); then
+    if (( append )); then
+      tee -a "$file_path"
+    else
+      tee "$file_path"
+    fi
+    return $?
   fi
 
-  mkdir -p "$dir"
-  local path="$dir/$file_name"
-
-  local append=0
-  [[ "${1:-}" == "--append" ]] && append=1 && shift
-
   if (( append )); then
-    cat >> "$path"
+    cat >> "$file_path"
   else
-    cat > "$path"
+    cat > "$file_path"
   fi
 }

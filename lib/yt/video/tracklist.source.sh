@@ -9,7 +9,8 @@
 __YT_VIDEO_TRACKLIST_SOURCED=1
 
 # Dependencies (bootstrap must be sourced by the entry script)
-source "$LIB_DIR/yt/video/description.source.sh"
+source "$LIB_DIR/yt/video/url.source.sh"
+source "$LIB_DIR/yt/video/meta.source.sh"
 source "$LIB_DIR/yt/video/tracklist.title.source.sh"
 source "$LIB_DIR/yt/video/tracklist.end.source.sh"
 source "$LIB_DIR/string.source.sh"
@@ -125,6 +126,34 @@ yt_video_tracklist_output() {
   else
     cat
   fi
+}
+
+yt_video_tracklist_get_description() {
+  local input="${1:?yt_video_tracklist_get_description: missing url}"
+  local dir="$2"
+
+  local id url
+  id="$(yt_video_url_id "$input")" || return 0
+  url="$(yt_video_url_canonical "$input")" || return 0
+
+  # If dir is empty or not an existing directory,
+  # fallback to current working directory.
+  if [[ -z "$dir" || ! -d "$dir" ]]; then
+    dir="$PWD"
+  fi
+
+  local file_name="${id}.meta.json"
+  local file_path="$dir/$file_name"
+
+  local description
+  if [[ -s "$file_path" ]]; then
+    description="$(yt_video_meta "$file_path" "$YT_VIDEO_META_DESC_FILTER")"
+  fi
+
+  
+
+  printf -v url '%s%s' "$YT_VIDEO_URL_PREFIX" "$id"
+
 }
 
 

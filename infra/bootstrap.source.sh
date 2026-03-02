@@ -18,6 +18,8 @@ BIN_DIR="$ROOT_DIR/bin"
 
 readonly ROOT_DIR INFRA_DIR LIB_DIR ACTION_DIR BIN_DIR
 
+readonly YT_CACHE_DIR="${YT_META_DIR:-$HOME/Downloads/yt}"
+
 # Logging
 source "$INFRA_DIR/log.source.sh"
 

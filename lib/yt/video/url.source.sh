@@ -14,7 +14,7 @@ readonly YT_VIDEO_URL_PREFIX='https://www.youtube.com/watch?v='
 
 yt_video_url_id() {
   local input="$1"
-  [[ -z "$input" ]] && return 0
+  [[ -z "$input" ]] && return 1
 
   local id
 
@@ -36,16 +36,18 @@ yt_video_url_id() {
     id="${BASH_REMATCH[1]}"
   fi
 
-  [[ -n "$id" ]] && printf '%s\n' "$id"
+  [[ -z "$id" ]] && return 1
+  
+  printf '%s\n' "$id"
 }
 
 yt_video_url_canonical() {
   local input="$1"
-  [[ -z "$input" ]] && return 0
+  [[ -z "$input" ]] && return 1
 
   local id
   id="$(yt_video_url_id "$input")"
-  [[ -z "$id" ]] && return 0
+  [[ -z "$id" ]] && return 1
 
   printf '%s%s\n' "$YT_VIDEO_URL_PREFIX" "$id"
 }
