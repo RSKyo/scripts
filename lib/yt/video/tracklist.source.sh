@@ -114,6 +114,7 @@ yt_video_tracklist_resolve() {
     
     printf '%s%s%s%s%s\n' "$sec" "$STRING_SEP" "$ts" "$STRING_SEP" "$title"
   done
+  过滤掉大于总时长的track
 }
 
 yt_video_tracklist_output() {

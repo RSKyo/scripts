@@ -9,6 +9,8 @@ set -o pipefail
 [[ -n "${__BOOTSTRAP_SOURCED+x}" ]] && return 0
 __BOOTSTRAP_SOURCED=1
 
+readonly SEP=$'\x1f'
+
 # Directories
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)" || exit 1
 INFRA_DIR="$ROOT_DIR/infra"
@@ -18,7 +20,8 @@ BIN_DIR="$ROOT_DIR/bin"
 
 readonly ROOT_DIR INFRA_DIR LIB_DIR ACTION_DIR BIN_DIR
 
-readonly YT_CACHE_DIR="${YT_META_DIR:-$HOME/Downloads/yt}"
+readonly YT_CACHE_DIR="${YT_CACHE_DIR:-$HOME/Downloads/yt}"
+readonly YT_CACHE_SUB_DIR="${YT_CACHE_SUB_DIR:-meta}"
 
 # Logging
 source "$INFRA_DIR/log.source.sh"
