@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Source-only library: lib/yt/video/tracklist.resolve
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091,SC2178
 
 # Prevent multiple sourcing
 # [[ -n "${__YT_VIDEO_TRACKLIST_RESOLVE_SOURCED+x}" ]] && return 0
@@ -10,18 +10,18 @@
 source "$LIB_DIR/yt/video/tracklist.detect.source.sh"
 source "$LIB_DIR/time.source.sh"
 
-yt_video_tracklist_resolve_time_range() {
-  local -n _out_start_ref="$1"
-  local -n _out_end_ref="$2"
+____yt_video_tracklist_resolve_time_range() {
+  local -n _start_idx_ref="$1"
+  local -n _end_idx_ref="$2"
   local -n _timestamp_lines_ref="$3"
 
   local total="${#_timestamp_lines_ref[@]}"
-  (( total > 0 )) || return 1
+  (( total > 0 )) || return 0
 
   local start_idx=-1 end_idx=-1
   local zero_idx=-1 max_sec=-1
 
-  local i line match ts sec
+  local i line match ts sec 
   for (( i=0; i<total; i++ )); do
     line="${_timestamp_lines_ref[i]}"
 
@@ -43,31 +43,32 @@ yt_video_tracklist_resolve_time_range() {
 
   (( start_idx >= 0 )) || return 1
 
-  _out_start_ref="$start_idx"
-  _out_end_ref="$end_idx"
+  _start_idx_ref="$start_idx"
+  _end_idx_ref="$end_idx"
   return 0
 }
 
-yt_video_tracklist_resolve_termination() {
-  local ref_name="$1"
+____yt_video_tracklist_resolve_termination() {
+  local _ref_name="$1"
+  local -n _tracklist_ref="$_ref_name"
   local duration="$2"
-  local -n _tracklist_ref="$ref_name"
+  
 
   local total="${#_tracklist_ref[@]}"
-  (( total > 0 )) || return 1
+  (( total > 0 )) || return 0
 
   local last_idx=$(( total - 1 ))
   local sec ts _
   IFS="$SEP" read -r sec ts _ <<< "${_tracklist_ref[last_idx]}"
 
   # --- Repeat ---
-  if yt_video_tracklist_is_repeat "$ref_name" "$duration"; then
+  if yt_video_tracklist_is_repeat "$_ref_name" "$duration"; then
     _tracklist_ref[last_idx]="${sec}${SEP}${ts}${SEP}@repeat"
     return 0
   fi
   
   # --- Natural termination ---
-  if yt_video_tracklist_last_is_song_like "$ref_name" "$duration"; then
+  if yt_video_tracklist_last_is_song_like "$_ref_name" "$duration"; then
       local end_ts
       end_ts=$(time_s_to_hms "$duration")
       _tracklist_ref+=("${duration}${SEP}${end_ts}${SEP}@end")
@@ -78,4 +79,102 @@ yt_video_tracklist_resolve_termination() {
   _tracklist_ref[last_idx]="${sec}${SEP}${ts}${SEP}@end"
 
   return 0
+}
+
+____yt_video_tracklist_resolve() {
+  local -n _tracklist_ref="$1"
+  local description="$2"
+  local duration="$3"
+
+  local -a timestamp_lines
+  readarray -t timestamp_lines < <(
+    printf '%s\n' "$description" |
+    text_filter "$TIME_TIMESTAMP_REGEX" | 
+    text_demath
+  )
+
+  (( ${#timestamp_lines[@]} == 0 )) && {
+    logi "no timestamp lines found"
+    return 0
+  }
+
+  local start_idx end_idx
+  yt_video_tracklist_resolve_time_range \
+    start_idx end_idx timestamp_lines || {
+      loge "failed to resolve tracklist time range start: $start_idx end: $end_idx"
+      return 1
+  }
+
+  local is_left=0
+  yt_video_tracklist_timestamp_is_left timestamp_lines && is_left=1
+
+  _tracklist_ref=()
+  local i line expanded
+  local left ts right sec
+
+  for (( i=start_idx; i<=end_idx; i++ )); do
+    line="${timestamp_lines[i]}"
+    expanded="$(string_expand "$line" "$TIME_TIMESTAMP_REGEX")"
+    IFS="$SEP" read -r left ts right <<< "$expanded"
+
+    ts="${ts//[[:space:]]/}"
+    ts="${ts//：/:}"
+    sec="$(time_hms_to_s "$ts")"
+    ts="$(time_s_to_hms "$sec")"
+
+    (( sec > duration )) && continue
+
+    if (( is_left )); then
+      _tracklist_ref+=("${sec}${SEP}${ts}${SEP}${right}")
+    else
+      _tracklist_ref+=("${sec}${SEP}${ts}${SEP}${left}")
+    fi
+  done
+}
+
+yt_video_tracklist_resolve_time_range() {
+  local -n _start_idx_ref="$1"
+  local -n _end_idx_ref="$2"
+  local -n _timestamp_lines_ref="$3"
+
+  local _inner_start_idx="$_start_idx_ref"
+  local _inner_end_idx="$_end_idx_ref"
+  local -a _inner_timestamp_lines=("${_timestamp_lines_ref[@]}")
+
+  ____yt_video_tracklist_resolve_time_range \
+    _inner_start_idx \
+    _inner_end_idx \
+    _inner_timestamp_lines || return
+
+  _start_idx_ref="$_inner_start_idx"
+  _end_idx_ref="$_inner_end_idx"
+}
+
+yt_video_tracklist_resolve_termination() {
+  local _ref_name="$1"
+  local -n _tracklist_ref="$_ref_name"
+  local duration="$2"
+
+  local -a _inner_tracklist=("${_tracklist_ref[@]}")
+
+  ____yt_video_tracklist_resolve_termination \
+    _inner_tracklist \
+    "$duration" || return
+
+  _tracklist_ref=("${_inner_tracklist[@]}")
+}
+
+yt_video_tracklist_resolve() {
+  local -n _tracklist_ref="$1"
+  local description="$2"
+  local duration="$3"
+
+  local -a _inner_tracklist=("${_tracklist_ref[@]}")
+
+  ____yt_video_tracklist_resolve \
+    _inner_tracklist \
+    "$description" \
+    "$duration" || return
+
+  _tracklist_ref=("${_inner_tracklist[@]}")
 }

@@ -21,7 +21,8 @@ BIN_DIR="$ROOT_DIR/bin"
 readonly ROOT_DIR INFRA_DIR LIB_DIR ACTION_DIR BIN_DIR
 
 readonly YT_CACHE_DIR="${YT_CACHE_DIR:-$HOME/Downloads/yt}"
-readonly YT_CACHE_SUB_DIR="${YT_CACHE_SUB_DIR:-meta}"
+readonly YT_CACHE_META_FOLDER="${YT_CACHE_META_FOLDER:-meta}"
+readonly YT_CACHE_TRACKLIST_FOLDER="${YT_CACHE_TRACKLIST_FOLDER:-tracklist}"
 
 # Logging
 source "$INFRA_DIR/log.source.sh"
