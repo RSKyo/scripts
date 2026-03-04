@@ -10,6 +10,44 @@
 source "$LIB_DIR/yt/video/tracklist.detect.source.sh"
 source "$LIB_DIR/time.source.sh"
 
+yt_video_tracklist_resolve_time_range() {
+  local -n _out_start_ref="$1"
+  local -n _out_end_ref="$2"
+  local -n _timestamp_lines_ref="$3"
+
+  local total="${#_timestamp_lines_ref[@]}"
+  (( total > 0 )) || return 1
+
+  local start_idx=-1 end_idx=-1
+  local zero_idx=-1 max_sec=-1
+
+  local i line match ts sec
+  for (( i=0; i<total; i++ )); do
+    line="${_timestamp_lines_ref[i]}"
+
+    match=
+    [[ "$line" =~ $TIME_TIMESTAMP_REGEX ]] && match="${BASH_REMATCH[0]}"
+    [[ -n "$match" ]] || continue
+
+    ts="${match//[[:space:]]/}"
+    ts="${ts//：/:}"
+    sec="$(time_hms_to_s "$ts")"
+
+    (( sec == 0 )) && zero_idx="$i"
+    if (( zero_idx >= 0 )) && (( sec > max_sec )); then
+      start_idx="$zero_idx"
+      end_idx="$i"
+      max_sec="$sec"
+    fi
+  done
+
+  (( start_idx >= 0 )) || return 1
+
+  _out_start_ref="$start_idx"
+  _out_end_ref="$end_idx"
+  return 0
+}
+
 yt_video_tracklist_resolve_termination() {
   local ref_name="$1"
   local duration="$2"

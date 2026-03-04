@@ -17,6 +17,31 @@ readonly __YT_VIDEO_TRACKLIST_END_TOL_PCT=30
 readonly __YT_VIDEO_TRACKLIST_REPEAT_RATIO=1.5
 readonly __YT_VIDEO_TRACKLIST_REPEAT_REGEX='(repeat|repetition|loop|looping|go on|^$)'
 
+yt_video_tracklist_timestamp_is_left() {
+  local -n _timestamp_lines_ref="$1"
+
+  local total="${#_timestamp_lines_ref[@]}"
+  (( total > 0 )) || return 1
+
+  local score=0
+  local line match left right
+
+  for line in "${_timestamp_lines_ref[@]}"; do
+    match=
+    [[ "$line" =~ $TIME_TIMESTAMP_REGEX ]] || continue
+    match="${BASH_REMATCH[0]}"
+
+    # Split by first timestamp occurrence
+    left="${line%%"$match"*}"
+    right="${line#*"$match"}"
+
+    # Compare length
+    (( ${#left}  > ${#right} )) && (( score++ ))
+    (( ${#right} > ${#left}  )) && (( score-- ))
+  done
+
+  (( score < 0 ))
+}
 
 yt_video_tracklist_is_repeat_by_keyword() {
   local -n _tracklist_ref="$1"

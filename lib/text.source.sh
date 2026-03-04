@@ -171,6 +171,28 @@ text_supports() {
   num_cmp "$hits_ratio" ge "$support"
 }
 
+# text_min_first_letter_pos
+# Read lines from stdin, output the minimum 1-based position of the first letter.
+# If no letter found, output 1.
+text_min_first_letter_pos() {
+  local min_pos=0
+  local line pos
+
+  while IFS= read -r line; do
+    pos="$(first_letter_pos "$line")" || continue
+    [[ -n "$pos" ]] || continue
+    (( pos > 0 )) || continue
+
+    if (( min_pos == 0 )) || (( pos < min_pos )); then
+      min_pos="$pos"
+      (( min_pos == 1 )) && break
+    fi
+  done
+
+  (( min_pos == 0 )) && min_pos=1
+  printf '%s\n' "$min_pos"
+}
+
 # Normalize Unicode text by compatibility decomposition.
 # - Applies NFKD normalization.
 # - Removes all combining marks (\p{M}).
