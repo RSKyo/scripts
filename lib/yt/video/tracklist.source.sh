@@ -5,8 +5,8 @@
 # --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
-[[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
-__YT_VIDEO_TRACKLIST_SOURCED=1
+# [[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
+# __YT_VIDEO_TRACKLIST_SOURCED=1
 
 # --- Dependencies ------------------------------------------------------------
 
@@ -35,7 +35,8 @@ yt_video_tracklist() {
       --dir) shift; [[ $# -ge 1 ]] || return 2; dir="$1"; shift ;;
       --refresh) shift; refresh=1 ;;
       --) shift; break ;;
-      *) return 2 ;;
+      *) { loge "Invalid args: $1"
+        return 2; } ;;
     esac
   done
 
