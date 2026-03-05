@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 # Source-only library: lib/yt/video/tracklist.title
+# shellcheck disable=SC1091
 
-# -------------------------------------------------
+# --- Source Guard ------------------------------------------------------------
+
 # Prevent multiple sourcing
-# -------------------------------------------------
-# [[ -n "${__YT_VIDEO_TRACKLIST_TITLE_SOURCED+x}" ]] && return 0
-# __YT_VIDEO_TRACKLIST_TITLE_SOURCED=1
+[[ -n "${__YT_VIDEO_TRACKLIST_TITLE_SOURCED+x}" ]] && return 0
+__YT_VIDEO_TRACKLIST_TITLE_SOURCED=1
+
+# --- Dependencies ------------------------------------------------------------
+
+# Dependencies (bootstrap must be sourced by the entry script)
+source "$LIB_DIR/letter.source.sh"
+source "$LIB_DIR/num.source.sh"
+source "$LIB_DIR/string.source.sh"
+source "$LIB_DIR/text.source.sh"
+
+# --- Constants ---------------------------------------------------------------
 
 readonly YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT=0.6
 
@@ -30,32 +41,20 @@ declare -Ar YT_VIDEO_TRACKLIST_TITLE_SEP_MAP=(
   [dot]='·'
 )
 
-# -------------------------------------------------
-# Public API (stdout interface)
-# -------------------------------------------------
+# --- Public API --------------------------------------------------------------
 
 yt_video_tracklist_title_align() {
-  local -n _tracklist_ref="$1"
-  
-  local -a _inner_tracklist=("$_tracklist_ref[@]")
+  local -a tracklist
+  readarray -t  tracklist
 
-  ____yt_video_tracklist_resolve_title_align \
-    _inner_tracklist || return
-
-  _tracklist_ref=("$_inner_tracklist[@]")
-}
-
-____yt_video_tracklist_title_align() {
-  local -n _tracklist_ref="$1"
-
-  local total="${#_tracklist_ref[@]}"
+  local total="${#tracklist[@]}"
   (( total > 0 )) || return 0
 
   local i line sec ts title 
   local pos min_pos=0
 
   for (( i=0; i<total; i++ )); do
-    title="${_tracklist_ref[i]##*"$SEP"}"
+    title="${tracklist[i]##*"$SEP"}"
 
     pos="$(first_letter_pos "$title")" || continue
     (( pos > 0 )) || continue
@@ -69,83 +68,149 @@ ____yt_video_tracklist_title_align() {
   (( min_pos == 0 )) && min_pos=1
 
   for (( i=0; i<total; i++ )); do
-    IFS="$SEP" read -r sec ts title <<< "${_tracklist_ref[i]}"
+    IFS="$SEP" read -r sec ts title <<< "${tracklist[i]}"
 
     title="$(letter_slice "$title" "$min_pos")"
     title="$(letter_trim "$title" "0123456789)）]】")"
 
-    _tracklist_ref[i]="${sec}${SEP}${ts}${SEP}${title}"
+    printf '%s%s%s%s%s\n' "${sec}" "${SEP}" "${ts}" "${SEP}" "${title}"
   done
 }
 
-
-
-# Detect which side contains Latin text
-# stdin : <sec><sep><ts><sep><title>
-# stdout: left | right
-____yt_video_tracklist_resolve_title() {
-  local _ref_name="$1"
-  local -n _tracklist_ref="$_ref_name"
-  local sep_regex="$2"
+yt_video_tracklist_title_resolve_sep_regex() {
+  local -n _sep_regex_ref="$1"
+  local -n _tracklist_ref="$2"
+  local support="${3:-$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT}"
 
   local total="${#_tracklist_ref[@]}"
   (( total > 0 )) || return 0
 
-  yt_video_tracklist_resolve_title_align "$_ref_name"
+  local titles line
+  titles="$(
+    for line in "${_tracklist_ref[@]}"; do
+      printf '%s\n' "${line##*"$SEP"}"
+    done
+  )"
+ 
+  local cls _regex _sel_regex
+  for cls in "${YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES[@]}"; do
+    _regex="${YT_VIDEO_TRACKLIST_TITLE_SEP_MAP[$cls]}"
 
+    if text_supports "$_regex" --support "$support" <<< "$titles"; then
+      logd "title sep class: $cls regex: $_regex"
+      _sel_regex="$_regex"
+      break
+    fi
+  done
+
+  [[ -n "$_sel_regex" ]] || return 1
+
+  _sep_regex_ref="$_sel_regex"
+}
+
+yt_video_tracklist_title_side_by_uniqueness() {
+  local regex="${1:?yt_video_tracklist_title_side_by_uniqueness: missing title sep regex}"
+
+  local -a tracklist
+  readarray -t  tracklist
+
+  local total="${#tracklist[@]}"
+  (( total > 0 )) || return 0
+
+  local i sec ts title expanded left right
   # --- Uniqueness check ---
-  local line title_expanded left right _ 
   declare -A left_seen=()
   declare -A right_seen=()
 
-  for line in "${_tracklist_ref[@]}"; do
-    title_expanded="$(string_expand "${line##*"$SEP"}" "$sep_regex")"
-    IFS="$SEP" read -r left _ right <<< "$title_expanded"
+  for (( i=0; i<total; i++ )); do
+    title="${tracklist[i]##*"$SEP"}"
+    expanded="$(string_expand "$title" "$regex")"
+    left="${expanded%%"$SEP"*}"
+    right="${expanded##*"$SEP"}"
 
     left_seen["$left"]=1
     right_seen["$right"]=1
   done
 
-  # --- Decide by uniqueness ---
   local lc rc
   lc=${#left_seen[@]}
   rc=${#right_seen[@]}
 
-  (( lc == total && rc < total )) && return 0
-  (( rc == total && lc < total )) && return 1
+  local side
+  if (( lc == total && rc < total )); then
+    side='left'
+  elif (( rc == total && lc < total )); then
+    side='right'
+  fi
 
-  # --- Fallback: Latin scoring ---
-  local llc=0 rlc=0 score=0
-  for line in "${_tracklist_ref[@]}"; do
-    title_expanded="$(string_expand "${line##*"$SEP"}" "$sep_regex")"
-    IFS="$SEP" read -r left _ right <<< "$title_expanded"
+  [[ -n "$side" ]] || return 1
 
-    llc=$(letter_count "$left" latin)
-    rlc=$(letter_count "$right" latin)
-    (( llc > rlc )) && (( score++ ))
-    (( rlc > llc )) && (( score-- ))
-  done
-
-  (( score >= 0 )) &&  return 0 || return 1
+  # --- Output selected side ---
+  printf '%s\n' "${tracklist[@]}" |
+  yt_video_tracklist_title_side "$regex" "$side"
 }
 
-# Normalize title by detected side
-# stdin : <sec><sep><ts><sep><title>
-# stdout: <sec><sep><ts><sep><title>
-yt_video_tracklist_title_process() {
-  # --- Params ---
-  local regex="$1"
-  local side="$2"
+yt_video_tracklist_title_side_by_bilingual() {
+  local regex="${1:?yt_video_tracklist_title_side_by_bilingual: missing title sep regex}"
 
-  # --- Process lines ---
-  local sec ts title title_side
+  local -a tracklist
+  readarray -t  tracklist
+
+  local total="${#tracklist[@]}"
+  (( total > 0 )) || return 0
+
+  local i sec ts title expanded left right
+
+  # --- Fallback: Latin scoring ---
+  local llc=0 rlc=0 llc_latin=0 rlc_latin=0 
+  local llt=0 rlt=0 llt_latin=0 rlt_latin=0
+  for (( i=0; i<total; i++ )); do
+    title="${tracklist[i]##*"$SEP"}"
+    expanded="$(string_expand "$title" "$regex")"
+    left="${expanded%%"$SEP"*}"
+    right="${expanded##*"$SEP"}"
+
+    llc=$(letter_count "$left")
+    rlc=$(letter_count "$right")
+    llc_latin=$(letter_count "$left" latin)
+    rlc_latin=$(letter_count "$right" latin)
+
+    (( llt+=llc ))
+    (( rlt+=rlc ))
+    (( llt_latin+=llc_latin ))
+    (( rlt_latin+=rlc_latin ))
+  done
+
+  local l_latin_ratio=0 r_latin_ratio=0 side
+  l_latin_ratio=$(num_quotient "$llt_latin" "$llt" 2)
+  r_latin_ratio=$(num_quotient "$rlt_latin" "$rlt" 2)
+
+  if num_cmp "$l_latin_ratio" gt '0.7' && num_cmp "$r_latin_ratio" lt '0.3'; then
+    side='left'
+  elif num_cmp "$r_latin_ratio" gt '0.7' && num_cmp "$l_latin_ratio" lt '0.3'; then
+    side='right'
+  fi
+
+  [[ -n "$side" ]] || return 1
+
+  # --- Output selected side ---
+  printf '%s\n' "${tracklist[@]}" |
+  yt_video_tracklist_title_side "$regex" "$side"
+}
+
+
+yt_video_tracklist_title_side() {
+  local regex="${1:?yt_video_tracklist_title_side: missing title sep regex}"
+  local side="${2:?yt_video_tracklist_title_side: missing side}"
+  local line sec ts title
+
   while IFS= read -r line; do
-    IFS="$STRING_SEP" read -r sec ts title <<< "$line"
+    IFS="$SEP" read -r sec ts title <<< "$line"
 
-    title_side="$(string_expand_side "$title" "$regex" \
-      --side "$side")"
+    title="$(string_expand_side "$title" "$regex" --side "$side")"
+    title="$(letter_trim "$title" "0123456789)）]】")"
 
     printf '%s%s%s%s%s\n' \
-      "$sec" "$STRING_SEP" "$ts" "$STRING_SEP" "$title_side"
+      "$sec" "$SEP" "$ts" "$SEP" "$title"
   done
 }

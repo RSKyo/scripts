@@ -1,49 +1,32 @@
 #!/usr/bin/env bash
-# Source-only library: yt.video.tracklist
+# Source-only library: lib/yt/video/tracklist
 # shellcheck disable=SC1091
 
-# -------------------------------------------------
+# --- Source Guard ------------------------------------------------------------
+
 # Prevent multiple sourcing
-# -------------------------------------------------
-# [[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
-# __YT_VIDEO_TRACKLIST_SOURCED=1
+[[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
+__YT_VIDEO_TRACKLIST_SOURCED=1
+
+# --- Dependencies ------------------------------------------------------------
 
 # Dependencies (bootstrap must be sourced by the entry script)
+source "$LIB_DIR/file.source.sh"
+
 source "$LIB_DIR/yt/video/url.source.sh"
 source "$LIB_DIR/yt/video/meta.source.sh"
-source "$LIB_DIR/yt/video/tracklist.detect.source.sh"
 source "$LIB_DIR/yt/video/tracklist.resolve.source.sh"
 source "$LIB_DIR/yt/video/tracklist.title.source.sh"
-source "$LIB_DIR/string.source.sh"
-source "$LIB_DIR/letter.source.sh"
-source "$LIB_DIR/text.source.sh"
-source "$LIB_DIR/time.source.sh"
 
+# --- Constants ---------------------------------------------------------------
 
+readonly YT_VIDEO_TRACKLIST_NAME='tracklist.txt'
 
-yt_video_tracklist_output() {
-  local dir="$1"
-  local id="$2"
-
-  if [[ -n "$dir" && -n "$id" ]]; then
-    mkdir -p "$dir" || return 1
-    tee "$dir/${id}.tracklist.txt"
-  else
-    cat
-  fi
-}
-
+# --- Public API --------------------------------------------------------------
 
 yt_video_tracklist() {
-  # --- Params ---
-  local input="$1"
+  local input="${1:?yt_video_tracklist: missing id url}"
   shift
-  [[ -n "$input" ]] || return 0
-
-
-  local support="$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT"
-
-  
   local dir="$YT_CACHE_DIR"
   local refresh=0
 
@@ -56,7 +39,21 @@ yt_video_tracklist() {
     esac
   done
 
-  # --- description and duration ---
+  local id file_name file_path
+  id="$(yt_video_url_id "$input")" || {
+    loge "Invalid input: $input"
+    return 2
+  }
+  printf -v file_name '%s.%s' "$id" "$YT_VIDEO_TRACKLIST_NAME"
+  file_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${file_name}"
+
+  if ((! refresh )) && [[ -s "$file_path" ]]; then
+    logi "read tracklist cache: $file_path"
+    cat "$file_path"
+    return 0
+  fi
+
+
   local args=(--dir "$dir")
   (( refresh )) && args+=(--refresh)
 
@@ -64,52 +61,54 @@ yt_video_tracklist() {
   description="$(yt_video_meta "$input" description "${args[@]}")"
   duration="$(yt_video_meta "$input" duration "${args[@]}")"
 
-  # --- resolve tracklist ---
   local -a tracklist=()
-  yt_video_tracklist_resolve tracklist "$description" "$duration" || {
-    loge 'failed to resolve tracklist'
-  }
+  readarray -t tracklist < <(
+    yt_video_tracklist_resolve "$description" "$duration" |
+    yt_video_tracklist_title_align
+  )
+
+  local sep_regex
+  yt_video_tracklist_title_resolve_sep_regex \
+    sep_regex tracklist || return 1
+
+  if [[ -n "$sep_regex" ]]; then
+    local -a _tmp
+
+    # --- strategy 1: uniqueness ---
+    if readarray -t tmp < <(
+        printf '%s\n' "${tracklist[@]}" |
+        yt_video_tracklist_title_side_by_uniqueness "$sep_regex"
+      ) && ((${#tmp[@]})); then
+        tracklist=("${tmp[@]}")
+
+    # --- strategy 2: bilingual ---
+    elif readarray -t tmp < <(
+        printf '%s\n' "${tracklist[@]}" |
+        yt_video_tracklist_title_side_by_bilingual "$sep_regex"
+      ) && ((${#tmp[@]})); then
+        tracklist=("${tmp[@]}")
+
+    # --- strategy 3: fallback ---
+    else
+      readarray -t tracklist < <(
+        printf '%s\n' "${tracklist[@]}" |
+        yt_video_tracklist_title_side "$sep_regex" left
+      )
+    fi
+  fi
+
+  readarray -t tracklist < <(
+    printf '%s\n' "${tracklist[@]}" |
+    yt_video_tracklist_resolve_termination "$duration"
+  )
+
+  if printf '%s\n' "${tracklist[@]}" |
+  file_write "$file_name" --dir "${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}"; then
+    logi "tracklist cache saved: $file_path"
+  else
+    loge "failed to write tracklist cache: $file_path"
+    return 1
+  fi
 
   printf '%s\n' "${tracklist[@]}"
-
-
-  
-#   # --- Behavior ---
-#   # --- Load normalized tracklist from description ---
-#   local -a tracklist
-#   readarray -t tracklist < <(
-#     yt_video_description "$input" |
-#     yt_video_tracklist_resolve
-#   )
-
-#   local total=${#tracklist[@]}
-#   (( total == 0 )) && return 0
-
-#   # --- Auto-detect bilingual separator and side ---
-#   if (( auto )); then
-#     sep_regex="$(yt_video_tracklist_title_detect_sep \
-#       ${support:+--support "$support"} \
-#       < <(printf '%s\n' "${tracklist[@]}") || return 2
-#     )"
-
-#     if [[ -n "$sep_regex" ]]; then
-#       side="$(yt_video_tracklist_title_detect_latin_side "$sep_regex" \
-#         < <(printf '%s\n' "${tracklist[@]}") || return 2
-#       )"
-#     fi
-#   fi
-
-#   local id
-#   id=$(yt_video_id "$input")
-
-#   if [[ -n "$sep_regex" && -n "$side" ]]; then
-#     printf '%s\n' "${tracklist[@]}" |
-#     yt_video_tracklist_title_process "$sep_regex" "$side" |
-#     yt_video_tracklist_end_process "$input" |
-#     yt_video_tracklist_output "$out" "$id"
-#   else
-#     printf '%s\n' "${tracklist[@]}" |
-#     yt_video_tracklist_end_process "$input" |
-#     yt_video_tracklist_output "$out" "$id"
-#   fi
 }

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Source-only library: yt.video.url
+# Source-only library: lib/yt/video/url
+
+# --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
 [[ -n "${__YT_VIDEO_URL_SOURCED+x}" ]] && return 0
 __YT_VIDEO_URL_SOURCED=1
+
+# --- Constants ---------------------------------------------------------------
 
 readonly YT_VIDEO_ID_REGEX='[A-Za-z0-9_-]{11}'
 readonly YT_VIDEO_URL_YOUTU_BE_REGEX="youtu\.be/($YT_VIDEO_ID_REGEX)"
@@ -11,6 +15,8 @@ readonly YT_VIDEO_URL_WATCH_REGEX="[\?&]v=($YT_VIDEO_ID_REGEX)"
 readonly YT_VIDEO_URL_EMBED_REGEX="/embed/($YT_VIDEO_ID_REGEX)"
 readonly YT_VIDEO_URL_SHORTS_REGEX="/shorts/($YT_VIDEO_ID_REGEX)"
 readonly YT_VIDEO_URL_PREFIX='https://www.youtube.com/watch?v='
+
+# --- Public API --------------------------------------------------------------
 
 yt_video_url_id() {
   local input="$1"

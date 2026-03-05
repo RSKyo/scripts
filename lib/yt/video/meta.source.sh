@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
-# Source-only library: yt.video.meta
+# Source-only library: lib/yt/video/meta
 # shellcheck disable=SC1091
 
+# --- Source Guard ------------------------------------------------------------
+
 # Prevent multiple sourcing
-# [[ -n "${__YT_VIDEO_META_SOURCED+x}" ]] && return 0
-# __YT_VIDEO_META_SOURCED=1
+[[ -n "${__YT_VIDEO_META_SOURCED+x}" ]] && return 0
+__YT_VIDEO_META_SOURCED=1
+
+# --- Dependencies ------------------------------------------------------------
+
+# Dependencies (bootstrap must be sourced by the entry script)
+source "$LIB_DIR/file.source.sh"
+
+source "$LIB_DIR/yt/video/url.source.sh"
+
+# --- Constants ---------------------------------------------------------------
 
 readonly YT_VIDEO_META_NAME='meta.json'
 
@@ -15,9 +26,7 @@ declare -Ar YT_VIDEO_META_FILTER_MAP=(
   [description]='.description // empty'
 )
 
-# Dependencies (bootstrap must be sourced by the entry script)
-source "$LIB_DIR/file.source.sh"
-source "$LIB_DIR/yt/video/url.source.sh"
+# --- Internal Helpers --------------------------------------------------------
 
 __yt_video_meta_derive() {
   local input="$1"
@@ -51,6 +60,8 @@ __yt_video_meta_download() {
   file_write "$file_name" --dir "${dir%/}/${YT_CACHE_META_FOLDER}"
 }
 
+# --- Public API --------------------------------------------------------------
+
 yt_video_meta_download() {
   local input="${1:?yt_video_meta_download: missing url}"
   shift
@@ -71,8 +82,17 @@ yt_video_meta_download() {
     __yt_video_meta_derive "$input" "$dir") || return 2
   
   if (( refresh )) || [[ ! -s "$file_path" ]]; then
+    logi "fetch video meta: $url"
+
     __yt_video_meta_download \
-    "$url" "$dir" "$file_name" || return 1
+      "$url" "$dir" "$file_name" || {
+        loge "failed to download video meta: $url"
+        return 1
+      }
+
+    logi "meta cache saved: $file_path"
+  else
+    logi "read meta cache: $file_path"
   fi
   
   return 0
@@ -103,8 +123,15 @@ yt_video_meta() {
     __yt_video_meta_derive "$input" "$dir") || return 2
 
   if (( refresh )) || [[ ! -s "$file_path" ]]; then
+    logi "fetch video meta: $url"
+
     __yt_video_meta_download \
-    "$url" "$dir" "$file_name" || return 1
+      "$url" "$dir" "$file_name" || {
+        loge "failed to download video meta: $url"
+        return 1
+      }
+
+    logi "meta cache saved: $file_path"
   fi
 
   # shellcheck disable=SC2154

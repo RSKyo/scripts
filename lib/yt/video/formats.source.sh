@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Source-only library: yt.video.formats
+# Source-only library: lib/yt/video/formats
 # shellcheck disable=SC1091
 
 # Prevent multiple sourcing
