@@ -132,6 +132,35 @@ ____yt_video_tracklist_resolve() {
   done
 }
 
+____yt_video_tracklist_resolve_title_sep_regex() {
+  local -n _sep_regex_ref="$1"
+  local -n _tracklist_ref="$2"
+  local support="${3:-$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT}"
+
+  local total="${#_tracklist_ref[@]}"
+  (( total > 0 )) || return 0
+
+  local titles line
+  titles="$(
+    for line in "${_tracklist_ref[@]}"; do
+      printf '%s\n' "${line##*"$SEP"}"
+    done
+  )"
+ 
+  local cls regex sel_regex
+  for cls in "${YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES[@]}"; do
+    regex="${YT_VIDEO_TRACKLIST_TITLE_SEP_MAP[$cls]}"
+
+    if text_supports "$regex" --support "$support" <<< "$titles"; then
+      sel_regex="$regex"
+      break
+    fi
+  done
+
+  [[ -n "$sel_regex" ]] || return 1
+  _sep_regex_ref="$sel_regex"
+}
+
 yt_video_tracklist_resolve_time_range() {
   local -n _start_idx_ref="$1"
   local -n _end_idx_ref="$2"
@@ -177,4 +206,20 @@ yt_video_tracklist_resolve() {
     "$duration" || return
 
   _tracklist_ref=("${_inner_tracklist[@]}")
+}
+
+yt_video_tracklist_resolve_title_sep_regex() {
+  local -n _sep_regex_ref="$1"
+  local -n _tracklist_ref="$2"
+  local support="${3:-$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT}"
+
+  local _inner_sep_regex="$_sep_regex_ref"
+  local _inner_tracklist=("${_tracklist_ref[@]}")
+
+  ____yt_video_tracklist_resolve_sep \
+    _inner_sep_regex \
+    _inner_tracklist \
+    "$support" || return
+
+  _sep_regex_ref="$_inner_sep_regex"
 }

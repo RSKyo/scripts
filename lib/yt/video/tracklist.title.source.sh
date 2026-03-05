@@ -34,20 +34,18 @@ declare -Ar YT_VIDEO_TRACKLIST_TITLE_SEP_MAP=(
 # Public API (stdout interface)
 # -------------------------------------------------
 
-yt_video_tracklist_titles() {
-  local -n _out_titlelist_ref="$1"
-  local -n _tracklist_ref="$2"
+yt_video_tracklist_title_align() {
+  local -n _tracklist_ref="$1"
+  
+  local -a _inner_tracklist=("$_tracklist_ref[@]")
 
-  _out_titlelist_ref=()
+  ____yt_video_tracklist_resolve_title_align \
+    _inner_tracklist || return
 
-  local line title
-  for line in "${_tracklist_ref[@]}"; do
-    title="${line##*"$SEP"}"
-    _out_titlelist_ref+=("$title")
-  done
+  _tracklist_ref=("$_inner_tracklist[@]")
 }
 
-yt_video_tracklist_title_align() {
+____yt_video_tracklist_title_align() {
   local -n _tracklist_ref="$1"
 
   local total="${#_tracklist_ref[@]}"
@@ -80,87 +78,47 @@ yt_video_tracklist_title_align() {
   done
 }
 
-# Detect title separator regex
-# stdin : <sec><sep><ts><sep><title>
-# stdout: regex
-yt_video_tracklist_title_detect_sep() {
-  local support="${1:-$YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT}"
-  
-  # --- Extract titles ---
-  local -a title_list=()
-  local title _
-  while IFS= read -r line; do
-    IFS="$STRING_SEP" read -r _ _ title <<< "$line"
-    title_list+=("$title")
-  done
 
-  local cls regex=''
-  for cls in "${YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES[@]}"; do
-    regex="${YT_VIDEO_TRACKLIST_TITLE_SEP_MAP[$cls]}"
-    [[ -n "$regex" ]] || continue
-
-    if text_supports "$regex" \
-        --support "$support" \
-        < <(printf '%s\n' "${title_list[@]}"); then
-
-      printf '%s\n' "$regex"
-      break
-    fi
-  done
-}
 
 # Detect which side contains Latin text
 # stdin : <sec><sep><ts><sep><title>
 # stdout: left | right
-yt_video_tracklist_title_detect_latin_side() {
-  # --- Params ---
-  local regex="$1"
+____yt_video_tracklist_resolve_title() {
+  local _ref_name="$1"
+  local -n _tracklist_ref="$_ref_name"
+  local sep_regex="$2"
 
-  # --- Extract titles ---
-  local -a title_list=()
-  local title _
-  while IFS= read -r line; do
-    IFS="$STRING_SEP" read -r _ _ title <<< "$line"
-    title_list+=("$title")
-  done
+  local total="${#_tracklist_ref[@]}"
+  (( total > 0 )) || return 0
+
+  yt_video_tracklist_resolve_title_align "$_ref_name"
 
   # --- Uniqueness check ---
-  local line title title_expanded left right _ 
+  local line title_expanded left right _ 
   declare -A left_seen=()
   declare -A right_seen=()
 
-  for line in "${title_list[@]}"; do
-    title_expanded="$(string_expand "$line" "$regex")"
-
-    IFS="$STRING_SEP" read -r left _ right <<< "$title_expanded"
+  for line in "${_tracklist_ref[@]}"; do
+    title_expanded="$(string_expand "${line##*"$SEP"}" "$sep_regex")"
+    IFS="$SEP" read -r left _ right <<< "$title_expanded"
 
     left_seen["$left"]=1
     right_seen["$right"]=1
   done
 
   # --- Decide by uniqueness ---
-  local total lc rc
-  total="${#title_list[@]}"
+  local lc rc
   lc=${#left_seen[@]}
   rc=${#right_seen[@]}
 
-  if (( lc == total && rc < total )); then
-    printf '%s\n' left
-    return 0
-  fi
-
-  if (( rc == total && lc < total )); then
-    printf '%s\n' right
-    return 0
-  fi
+  (( lc == total && rc < total )) && return 0
+  (( rc == total && lc < total )) && return 1
 
   # --- Fallback: Latin scoring ---
   local llc=0 rlc=0 score=0
-
-  for line in "${title_list[@]}"; do
-    title_expanded="$(string_expand "$line" "$regex")"
-
-    IFS="$STRING_SEP" read -r left _ right <<< "$title_expanded"
+  for line in "${_tracklist_ref[@]}"; do
+    title_expanded="$(string_expand "${line##*"$SEP"}" "$sep_regex")"
+    IFS="$SEP" read -r left _ right <<< "$title_expanded"
 
     llc=$(letter_count "$left" latin)
     rlc=$(letter_count "$right" latin)
@@ -168,7 +126,7 @@ yt_video_tracklist_title_detect_latin_side() {
     (( rlc > llc )) && (( score-- ))
   done
 
-  (( score >= 0 )) && printf '%s\n' left || printf '%s\n' right
+  (( score >= 0 )) &&  return 0 || return 1
 }
 
 # Normalize title by detected side
