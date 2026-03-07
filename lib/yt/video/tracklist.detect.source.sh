@@ -16,12 +16,6 @@ source "$LIB_DIR/time.source.sh"
 
 source "$LIB_DIR/yt/video/meta.source.sh"
 
-# --- Constants ---------------------------------------------------------------
-
-readonly YT_VIDEO_TRACKLIST_END_TOL_PCT=30
-readonly YT_VIDEO_TRACKLIST_REPEAT_RATIO=1.5
-readonly YT_VIDEO_TRACKLIST_REPEAT_REGEX='(repeat|repetition|loop|looping|go on|^$)'
-
 # --- Public API --------------------------------------------------------------
 
 yt_video_tracklist_time_range() {
@@ -37,7 +31,7 @@ yt_video_tracklist_time_range() {
 
   local i ts sec 
   for (( i=0; i<total; i++ )); do
-    [[ "${_timestamp_lines_ref[i]}" =~ $TIME_TIMESTAMP_REGEX ]] || continue
+    [[ "${_timestamp_lines_ref[i]}" =~ $REGEX_TIMESTAMP ]] || continue
 
     ts="${BASH_REMATCH[0]}"
     [[ -n "$ts" ]] || continue
@@ -70,7 +64,7 @@ yt_video_tracklist_timestamp_is_left() {
   local line match left right
 
   for line in "${_timestamp_lines_ref[@]}"; do
-    [[ "$line" =~ $TIME_TIMESTAMP_REGEX ]] || continue
+    [[ "$line" =~ $REGEX_TIMESTAMP ]] || continue
     match="${BASH_REMATCH[0]}"
     [[ -n "$match" ]] || continue
 

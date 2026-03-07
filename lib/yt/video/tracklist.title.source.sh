@@ -18,8 +18,6 @@ source "$LIB_DIR/text.source.sh"
 
 # --- Constants ---------------------------------------------------------------
 
-readonly YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT=0.6
-
 # Separator regex priority list (first match wins)
 readonly YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES=(
   dash_sp

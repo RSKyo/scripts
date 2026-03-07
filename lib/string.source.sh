@@ -1,100 +1,60 @@
 #!/usr/bin/env bash
-# string.source.sh
-# String utilities module.
+# Source-only library: lib/string
 
-# shellcheck disable=SC1091,SC2034
+# --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
 [[ -n "${__STRING_SOURCED+x}" ]] && return 0
 __STRING_SOURCED=1
 
-readonly STRING_SEP=$'\x1f'
+# --- Dependencies ------------------------------------------------------------
+# shellcheck disable=SC1091
 
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/num.source.sh"
 
-# -------------------------------------------------
-# Internal Helpers (name-ref only)
-# -------------------------------------------------
-
-____string_split_by_ratio() {
-  local -n left="$1"
-  local -n center="$2"
-  local -n right="$3"
-
-  local input="$4"
-  local ratio_start="$5"
-  local ratio_end="$6"
-
-  local len=${#input}
-  local boundary_from boundary_to
-
-  boundary_from=$(num_product "$len" "$ratio_start" 0)
-  boundary_to=$(num_product "$len" "$ratio_end" 0)
-
-  left="${input:0:boundary_from}"
-  center="${input:boundary_from:boundary_to-boundary_from}"
-  right="${input:boundary_to}"
-}
-
-____string_split_by_regex() {
-  local -n left="$1"
-  local -n match="$2"
-  local -n right="$3"
-
-  local input="$4"
-  local regex="$5"
-
-  if [[ "$input" =~ $regex ]]; then
-    match="${BASH_REMATCH[0]}"
-    left="${input%%"$match"*}"
-    right="${input#*"$match"}"
-  else
-    left="$input"
-    match=''
-    right="$input"
-  fi
-}
+# --- Internal Helpers --------------------------------------------------------
 
 __string_split_by_ratio() {
-  local -n _out_left="$1"
-  local -n _out_center="$2"
-  local -n _out_right="$3"
-  shift 3
-  local _inner_left
-  local _inner_center
-  local _inner_right
-  ____string_split_by_ratio \
-    _inner_left \
-    _inner_center \
-    _inner_right \
-    "$@"
-  _out_left="$_inner_left"
-  _out_center="$_inner_center"
-  _out_right="$_inner_right"
+  local -n _left_ref="$1"
+  local -n _center_ref="$2"
+  local -n _right_ref="$3"
+
+  local _input="$4"
+  local _ratio_start="$5"
+  local _ratio_end="$6"
+
+  local len=${#_input}
+  local boundary_from boundary_to
+
+  boundary_from=$(num_product "$len" "$_ratio_start" 0)
+  boundary_to=$(num_product "$len" "$_ratio_end" 0)
+
+  _left_ref="${_input:0:boundary_from}"
+  _center_ref="${_input:boundary_from:boundary_to-boundary_from}"
+  _right_ref="${_input:boundary_to}"
 }
 
 __string_split_by_regex() {
-  local -n _out_left="$1"
-  local -n _out_match="$2"
-  local -n _out_right="$3"
-  shift 3
-  local _inner_left
-  local _inner_match
-  local _inner_right
-  ____string_split_by_regex \
-    _inner_left \
-    _inner_match \
-    _inner_right \
-    "$@"
-  _out_left="$_inner_left"
-  _out_match="$_inner_match"
-  _out_right="$_inner_right"
+  local -n _left_ref="$1"
+  local -n _match_ref="$2"
+  local -n _right_ref="$3"
+
+  local _input="$4"
+  local _regex="$5"
+
+  if [[ "$_input" =~ $_regex ]]; then
+    _match_ref="${BASH_REMATCH[0]}"
+    _left_ref="${_input%%"$_match_ref"*}"
+    _right_ref="${_input#*"$_match_ref"}"
+  else
+    _match_ref=''
+    _left_ref="$_input"
+    _right_ref="$_input"
+  fi
 }
 
-# -------------------------------------------------
-# Public API (stdout interface)
-# -------------------------------------------------
+# --- Public API --------------------------------------------------------------
 
 # string_trim <input>
 # Trim leading and trailing whitespace.
@@ -197,7 +157,6 @@ string_expand() {
   done
 
   # --- Behavior ---
-  local sep="$STRING_SEP"
   local prefix='' window='' suffix=''
   local left='' match='' right=''
 
@@ -215,7 +174,7 @@ string_expand() {
   left="$prefix$left"
   right="$right$suffix"
   
-  printf '%s%s%s%s%s\n' "$left" "$sep" "$match" "$sep" "$right"
+  printf '%s%s%s%s%s\n' "$left" "$SEP" "$match" "$SEP" "$right"
 }
 
 # string_expand_side <input> <pattern> [--window from to] [--side value]

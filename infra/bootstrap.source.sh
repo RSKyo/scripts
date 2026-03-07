@@ -10,6 +10,19 @@ set -o pipefail
 __BOOTSTRAP_SOURCED=1
 
 readonly SEP=$'\x1f'
+readonly REGEX_TIMESTAMP='[0-9]+[[:space:]]*:[[:space:]]*[0-5][0-9]([[:space:]]*:[[:space:]]*[0-5][0-9])?'
+
+readonly YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT=0.6
+readonly YT_VIDEO_TRACKLIST_END_TOL_PCT=30
+readonly YT_VIDEO_TRACKLIST_REPEAT_RATIO=1.5
+readonly YT_VIDEO_TRACKLIST_REPEAT_REGEX='(repeat|repetition|loop|looping|go on|^$)'
+
+readonly YT_CACHE_DIR="${YT_CACHE_DIR:-$HOME/Downloads/yt}"
+readonly YT_CACHE_META_FOLDER="${YT_CACHE_META_FOLDER:-.cache/meta}"
+readonly YT_CACHE_TRACKLIST_FOLDER="${YT_CACHE_TRACKLIST_FOLDER:-.cache/tracklist}"
+readonly YT_CACHE_TEMP_NAME='_tmp.txt'
+readonly YT_CACHE_META_NAME='meta.json'
+readonly YT_CACHE_TRACKLIST_NAME='tracklist.txt'
 
 # Directories
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)" || exit 1
@@ -19,10 +32,6 @@ ACTION_DIR="$ROOT_DIR/action"
 BIN_DIR="$ROOT_DIR/bin"
 
 readonly ROOT_DIR INFRA_DIR LIB_DIR ACTION_DIR BIN_DIR
-
-readonly YT_CACHE_DIR="${YT_CACHE_DIR:-$HOME/Downloads/yt}"
-readonly YT_CACHE_META_FOLDER="${YT_CACHE_META_FOLDER:-meta}"
-readonly YT_CACHE_TRACKLIST_FOLDER="${YT_CACHE_TRACKLIST_FOLDER:-tracklist}"
 
 # Logging
 source "$INFRA_DIR/log.source.sh"

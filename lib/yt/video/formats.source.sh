@@ -33,7 +33,7 @@ yt_video_formats_write() {
   id="$(yt_video_url_id "$url")"
   [[ -z "$id" ]] && return 0
 
-  printf -v url '%s%s' "$YT_VIDEO_URL_PREFIX" "$id"
+  printf -v url '%s%s' "$__YT_VIDEO_URL_PREFIX" "$id"
 
   mkdir -p "$dir"
 

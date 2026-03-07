@@ -1,30 +1,32 @@
 #!/usr/bin/env bash
-# letter.source.sh
-# letter utilities module.
-
+# Source-only library: lib/letter
 # shellcheck disable=SC2016
+
+# --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
 [[ -n "${__LETTER_SOURCED+x}" ]] && return 0
 __LETTER_SOURCED=1
 
-# Normalize user-friendly script names to Unicode Script
-# shellcheck disable=SC2034
-__letter_normalize_script_into() {
-  local -n out="$1"
-  local name="$2"
-  case "$name" in
-    latin|Latin)       out=Latin ;;
-    han|Han|cjk|CJK)   out=Han ;;
-    hira|hiragana)     out=Hiragana ;;
-    kata|katakana)     out=Katakana ;;
-    hangul|kr|korean)  out=Hangul ;;
-    greek)             out=Greek ;;
-    cyrillic)          out=Cyrillic ;;
-    arabic)            out=Arabic ;;
-    *)                 out= ;;
+# --- Internal Helpers --------------------------------------------------------
+
+__letter_script_canonicalize() {
+  local -n _script_ref="$1"
+  local _script="$2"
+  case "$_script" in
+    latin|Latin)       _script_ref=Latin ;;
+    han|Han|cjk|CJK)   _script_ref=Han ;;
+    hira|hiragana)     _script_ref=Hiragana ;;
+    kata|katakana)     _script_ref=Katakana ;;
+    hangul|kr|korean)  _script_ref=Hangul ;;
+    greek)             _script_ref=Greek ;;
+    cyrillic)          _script_ref=Cyrillic ;;
+    arabic)            _script_ref=Arabic ;;
+    *)                 _script_ref= ;;
   esac
 }
+
+# --- Public API --------------------------------------------------------------
 
 # Count Unicode letters.
 # - If script is provided, counts letters of that script.
@@ -33,7 +35,7 @@ __letter_normalize_script_into() {
 letter_count() {
   local input="$1"
   local script
-  __letter_normalize_script_into script "${2:-}"
+  __letter_script_canonicalize script "${2:-}"
 
   __perl '
     use strict;

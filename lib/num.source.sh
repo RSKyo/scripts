@@ -1,106 +1,87 @@
 #!/usr/bin/env bash
-# num.source.sh
-# num utilities module.
+# Source-only library: lib/num
+
+# --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
 [[ -n "${__NUM_SOURCED+x}" ]] && return 0
 __NUM_SOURCED=1
 
+# --- Constants ---------------------------------------------------------------
+
 # Internal calculation scale.
 readonly __NUM_CALC_SCALE=6
 
-# -------------------------------------------------
-# Internal Helpers (name-ref only)
-# -------------------------------------------------
+# --- Internal Helpers --------------------------------------------------------
 
-____num_scaled() {
-  local -n scaled="$1"
-  local value="$2"
+__num_scaled() {
+  local -n _scaled_ref="$1"
+  local _value="$2"
   
-  local calc_scale="$__NUM_CALC_SCALE"
   local sign=1
   local integer fraction
 
-  [[ $value == -* ]] && {
+  [[ $_value == -* ]] && {
     sign=-1
-    value="${value#-}"
+    _value="${_value#-}"
   }
 
-  IFS='.' read -r integer fraction <<< "$value"
+  IFS='.' read -r integer fraction <<< "$_value"
 
   integer="${integer:-0}"
-  fraction="${fraction:0:$calc_scale}"
+  fraction="${fraction:0:$__NUM_CALC_SCALE}"
 
-  scaled=$(( integer * 10**calc_scale ))
+  _scaled_ref=$(( integer * 10**__NUM_CALC_SCALE ))
 
   if [[ -n $fraction ]]; then
-    scaled=$(( scaled + fraction * 10**(calc_scale - ${#fraction}) ))
+    _scaled_ref=$(( _scaled_ref + fraction * 10**(__NUM_CALC_SCALE - ${#fraction}) ))
   fi
 
-  scaled=$(( sign * scaled ))
+  _scaled_ref=$(( sign * _scaled_ref ))
 }
 
-____num_restored() {
-  local -n restored="$1"
-  local value="$2"
+__num_restored() {
+  local -n _restored_ref="$1"
+  local _value="$2"
   local scale="${3:-3}"
   local trim="${4:-1}"
 
-  local calc_scale="$__NUM_CALC_SCALE"
   local sign=1
   local pow integer fraction
 
-  (( value < 0 )) && {
+  (( _value < 0 )) && {
     sign=-1
-    value=$(( -value ))
+    _value=$(( -_value ))
   }
 
   if (( scale == 0 )); then
-    value=$(( value / 10**calc_scale ))
-    restored="$(( sign * value ))"
+    _value=$(( _value / 10**__NUM_CALC_SCALE ))
+    _restored_ref="$(( sign * _value ))"
     return 0
   fi
 
   # adjust internal scale to requested precision
-  if (( calc_scale > scale )); then
-    value=$(( value / 10**(calc_scale - scale) ))
-  elif (( calc_scale < scale )); then
-    value=$(( value * 10**(scale - calc_scale) ))
+  if (( __NUM_CALC_SCALE > scale )); then
+    _value=$(( _value / 10**(__NUM_CALC_SCALE - scale) ))
+  elif (( __NUM_CALC_SCALE < scale )); then
+    _value=$(( _value * 10**(scale - __NUM_CALC_SCALE) ))
   fi
 
   pow=$((10**scale))
-  integer=$(( value / pow ))
-  fraction=$(printf "%0*d" "$scale" "$(( value % pow ))")
+  integer=$(( _value / pow ))
+  fraction=$(printf "%0*d" "$scale" "$(( _value % pow ))")
 
   if (( trim )); then
     fraction="${fraction%"${fraction##*[!0]}"}"
   fi
 
-  restored="$(( sign * integer ))"
-  [[ -n $fraction ]] && restored+=".$fraction"
+  _restored_ref="$(( sign * integer ))"
+  [[ -n $fraction ]] && _restored_ref+=".$fraction"
 
   return 0
 }
 
-__num_scaled() {
-  local -n _out_scaled="$1"
-  shift
-  local _inner_scaled
-  ____num_scaled _inner_scaled "$@"
-  _out_scaled="$_inner_scaled"
-}
-
-__num_restored() {
-  local -n _out_restored="$1"
-  shift
-  local _inner_restored
-  ____num_restored _inner_restored  "$@"
-  _out_restored="$_inner_restored"
-}
-
-# -------------------------------------------------
-# Public API (stdout interface)
-# -------------------------------------------------
+# --- Public API --------------------------------------------------------------
 
 # num_like_int <value>
 # Return true if the string looks like a signed integer.

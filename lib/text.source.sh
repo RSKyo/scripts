@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# text.source.sh
-# text utilities module.
+# Source-only library: lib/text
 
-# shellcheck disable=SC1091,SC2016
+# --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
 [[ -n "${__TEXT_SOURCED+x}" ]] && return 0
 __TEXT_SOURCED=1
 
+# --- Dependencies ------------------------------------------------------------
+# shellcheck disable=SC1091
+
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/string.source.sh"
+
+# --- Public API --------------------------------------------------------------
 
 # text_expand <regex> [--window from to]
 # Structured expand of input lines by regex.
@@ -176,6 +180,7 @@ text_supports() {
 # - Removes all combining marks (\p{M}).
 # - Preserves original line structure.
 # - Works as a stream filter (reads from stdin, writes to stdout).
+# shellcheck disable=SC2016
 text_demath() {
   __perl '
     use strict;

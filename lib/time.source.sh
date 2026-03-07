@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# time.source.sh
-# Time utilities module.ing,
+# Source-only library: lib/time
 
-# shellcheck disable=SC1091,SC2034
+# --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
 [[ -n "${__TIME_SOURCED+x}" ]] && return 0
 __TIME_SOURCED=1
+
+# --- Constants ---------------------------------------------------------------
 
 # Time unit scales (base: milliseconds)
 readonly __TIME_SCALE_ms=1
@@ -14,15 +15,16 @@ readonly __TIME_SCALE_s=1000
 readonly __TIME_SCALE_m=$((60*1000))
 readonly __TIME_SCALE_h=$((3600*1000))
 
-# Match mm:ss or hh:mm:ss (optional spaces around ':')
-readonly TIME_TIMESTAMP_REGEX='[0-9]+[[:space:]]*:[[:space:]]*[0-5][0-9]([[:space:]]*:[[:space:]]*[0-5][0-9])?'
+# --- Public API --------------------------------------------------------------
 
 # time_normalize <time_string>
 # Remove all whitespace from time string.
 # Example: "01 : 02 : 03" -> "01:02:03"
 time_normalize() {
   local time_string="$1"
-  printf '%s\n' "${time_string//[[:space:]]/}"
+  time_string="${time_string//[[:space:]]/}"
+  time_string="${time_string//：/:}"
+  printf '%s\n' "$time_string"
 }
 
 # time_s_to_hms <seconds> [hour_width]

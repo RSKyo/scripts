@@ -26,7 +26,7 @@ yt_video_tracklist_resolve() {
   local -a timestamp_lines
   readarray -t timestamp_lines < <(
     printf '%s\n' "$description" |
-    text_filter "$TIME_TIMESTAMP_REGEX" | 
+    text_filter "$REGEX_TIMESTAMP" | 
     text_demath
   )
 
@@ -49,7 +49,7 @@ yt_video_tracklist_resolve() {
 
   for (( i=start_idx; i<=end_idx; i++ )); do
     line="${timestamp_lines[i]}"
-    expanded="$(string_expand "$line" "$TIME_TIMESTAMP_REGEX")"
+    expanded="$(string_expand "$line" "$REGEX_TIMESTAMP")"
     IFS="$SEP" read -r left ts right <<< "$expanded"
 
     ts="${ts//[[:space:]]/}"

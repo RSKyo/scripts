@@ -9,12 +9,12 @@ __YT_VIDEO_URL_SOURCED=1
 
 # --- Constants ---------------------------------------------------------------
 
-readonly YT_VIDEO_ID_REGEX='[A-Za-z0-9_-]{11}'
-readonly YT_VIDEO_URL_YOUTU_BE_REGEX="youtu\.be/($YT_VIDEO_ID_REGEX)"
-readonly YT_VIDEO_URL_WATCH_REGEX="[\?&]v=($YT_VIDEO_ID_REGEX)"
-readonly YT_VIDEO_URL_EMBED_REGEX="/embed/($YT_VIDEO_ID_REGEX)"
-readonly YT_VIDEO_URL_SHORTS_REGEX="/shorts/($YT_VIDEO_ID_REGEX)"
-readonly YT_VIDEO_URL_PREFIX='https://www.youtube.com/watch?v='
+readonly __YT_VIDEO_ID_REGEX='[A-Za-z0-9_-]{11}'
+readonly __YT_VIDEO_URL_YOUTU_BE_REGEX="youtu\.be/($__YT_VIDEO_ID_REGEX)"
+readonly __YT_VIDEO_URL_WATCH_REGEX="[\?&]v=($__YT_VIDEO_ID_REGEX)"
+readonly __YT_VIDEO_URL_EMBED_REGEX="/embed/($__YT_VIDEO_ID_REGEX)"
+readonly __YT_VIDEO_URL_SHORTS_REGEX="/shorts/($__YT_VIDEO_ID_REGEX)"
+readonly __YT_VIDEO_URL_PREFIX='https://www.youtube.com/watch?v='
 
 # --- Public API --------------------------------------------------------------
 
@@ -25,20 +25,20 @@ yt_video_url_id() {
   local id
 
   # Plain video id
-  if [[ "$input" =~ ^$YT_VIDEO_ID_REGEX$ ]]; then
+  if [[ "$input" =~ ^$__YT_VIDEO_ID_REGEX$ ]]; then
     id="$input"
 
   # URL patterns
-  elif [[ "$input" =~ $YT_VIDEO_URL_WATCH_REGEX ]]; then
+  elif [[ "$input" =~ $__YT_VIDEO_URL_WATCH_REGEX ]]; then
     id="${BASH_REMATCH[1]}"
 
-  elif [[ "$input" =~ $YT_VIDEO_URL_YOUTU_BE_REGEX ]]; then
+  elif [[ "$input" =~ $__YT_VIDEO_URL_YOUTU_BE_REGEX ]]; then
     id="${BASH_REMATCH[1]}"
 
-  elif [[ "$input" =~ $YT_VIDEO_URL_EMBED_REGEX ]]; then
+  elif [[ "$input" =~ $__YT_VIDEO_URL_EMBED_REGEX ]]; then
     id="${BASH_REMATCH[1]}"
 
-  elif [[ "$input" =~ $YT_VIDEO_URL_SHORTS_REGEX ]]; then
+  elif [[ "$input" =~ $__YT_VIDEO_URL_SHORTS_REGEX ]]; then
     id="${BASH_REMATCH[1]}"
   fi
 
@@ -55,5 +55,5 @@ yt_video_url_canonical() {
   id="$(yt_video_url_id "$input")"
   [[ -z "$id" ]] && return 1
 
-  printf '%s%s\n' "$YT_VIDEO_URL_PREFIX" "$id"
+  printf '%s%s\n' "$__YT_VIDEO_URL_PREFIX" "$id"
 }

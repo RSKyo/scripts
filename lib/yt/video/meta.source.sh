@@ -17,8 +17,6 @@ source "$LIB_DIR/yt/video/url.source.sh"
 
 # --- Constants ---------------------------------------------------------------
 
-readonly YT_VIDEO_META_NAME='meta.json'
-
 declare -Ar YT_VIDEO_META_FILTER_MAP=(
   [id]='.id // empty'
   [title]='.title // empty'
@@ -28,28 +26,11 @@ declare -Ar YT_VIDEO_META_FILTER_MAP=(
 
 # --- Internal Helpers --------------------------------------------------------
 
-__yt_video_meta_derive() {
-  local input="$1"
-  local dir="$2"
-
-  local id url file_name file_path
-
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  url="$(yt_video_url_canonical "$id")" || return 2
-  printf -v file_name '%s.%s' "$id" "$YT_VIDEO_META_NAME"
-  file_path="${dir%/}/${YT_CACHE_META_FOLDER}/${file_name}"
-
-  printf '%s%s%s%s%s%s%s\n' \
-    "$id" "$SEP" "$url" "$SEP" "$file_name" "$SEP" "$file_path"
-}
-
-__yt_video_meta_download() {
+__yt_video_meta_cache_build() {
   local url="$1"
-  local dir="$2"
-  local file_name="$3"
+  local file_path="$2"
+
+  logi "fetch video meta: $url"
 
   # shellcheck disable=SC2154
   "$yt_dlp" \
@@ -57,7 +38,12 @@ __yt_video_meta_download() {
     --skip-download \
     --dump-json \
     "$url" 2>/dev/null |
-  file_write "$file_name" --dir "${dir%/}/${YT_CACHE_META_FOLDER}"
+  file_write "$file_path" || {
+    loge "failed to download video meta: $url"
+    return 1
+  }
+
+  logi "meta cache saved: $file_path"
 }
 
 # --- Public API --------------------------------------------------------------
@@ -78,21 +64,18 @@ yt_video_meta_download() {
   done
 
   local id url file_name file_path
-  IFS="$SEP" read -r id url file_name file_path < <(
-    __yt_video_meta_derive "$input" "$dir") || return 2
+  id="$(yt_video_url_id "$input")" || {
+    loge "Invalid input: $input"
+    return 2
+  }
+  url="$(yt_video_url_canonical "$id")" || return 2
+  file_name="${id}.${YT_CACHE_META_NAME}"
+  file_path="${dir%/}/${YT_CACHE_META_FOLDER}/${file_name}"
   
   if (( refresh )) || [[ ! -s "$file_path" ]]; then
-    logi "fetch video meta: $url"
-
-    __yt_video_meta_download \
-      "$url" "$dir" "$file_name" || {
-        loge "failed to download video meta: $url"
-        return 1
-      }
-
-    logi "meta cache saved: $file_path"
+    __yt_video_meta_cache_build "$url" "$file_path" || return 1
   else
-    logi "read meta cache: $file_path"
+    logi "meta cache already exists: $file_path"
   fi
   
   return 0
@@ -119,19 +102,16 @@ yt_video_meta() {
   [[ -n "$filter" ]] || return 2
 
   local id url file_name file_path
-  IFS="$SEP" read -r id url file_name file_path < <(
-    __yt_video_meta_derive "$input" "$dir") || return 2
+  id="$(yt_video_url_id "$input")" || {
+    loge "Invalid input: $input"
+    return 2
+  }
+  url="$(yt_video_url_canonical "$id")" || return 2
+  file_name="${id}.${YT_CACHE_META_NAME}"
+  file_path="${dir%/}/${YT_CACHE_META_FOLDER}/${file_name}"
 
   if (( refresh )) || [[ ! -s "$file_path" ]]; then
-    logi "fetch video meta: $url"
-
-    __yt_video_meta_download \
-      "$url" "$dir" "$file_name" || {
-        loge "failed to download video meta: $url"
-        return 1
-      }
-
-    logi "meta cache saved: $file_path"
+    __yt_video_meta_cache_build "$url" "$file_path" || return 1
   fi
 
   # shellcheck disable=SC2154
