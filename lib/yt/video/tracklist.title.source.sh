@@ -16,29 +16,6 @@ source "$LIB_DIR/num.source.sh"
 source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/text.source.sh"
 
-# --- Constants ---------------------------------------------------------------
-
-# Separator regex priority list (first match wins)
-readonly YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES=(
-  dash_sp
-  dash
-  pipe_sp
-  pipe
-  slash_sp
-  slash
-  dot
-)
-
-declare -Ar YT_VIDEO_TRACKLIST_TITLE_SEP_MAP=(
-  [dash_sp]='[[:space:]]+[-–—－][[:space:]]+'
-  [dash]='[-–—－]'
-  [pipe_sp]='[[:space:]]+\|[[:space:]]+'
-  [pipe]='\|'
-  [slash_sp]='[[:space:]]+\/[[:space:]]+'
-  [slash]='\/'
-  [dot]='·'
-)
-
 # --- Public API --------------------------------------------------------------
 
 yt_video_tracklist_title_align() {

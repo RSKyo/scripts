@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Source-only library: lib/yt/video/tracklist
-
+# shellcheck disable=SC1091
 
 # --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
-# [[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
-# __YT_VIDEO_TRACKLIST_SOURCED=1
+[[ -n "${__YT_VIDEO_TRACKLIST_SOURCED+x}" ]] && return 0
+__YT_VIDEO_TRACKLIST_SOURCED=1
 
 # --- Dependencies ------------------------------------------------------------
-# shellcheck disable=SC1091
 
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/file.source.sh"
@@ -80,6 +79,24 @@ __yt_video_tracklist_cache_build() {
 
 # --- Public API --------------------------------------------------------------
 
+yt_video_tracklist_cache_info() {
+  local input="$1"
+  local dir="$2"
+
+  local id url tracklist_name tracklist_path
+
+  id="$(yt_video_url_id "$input")" || {
+    loge "Invalid input: $input"
+    return 2
+  }
+  url="$(yt_video_url_canonical "$id")" || return 2
+  tracklist_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
+  tracklist_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${tracklist_name}"
+
+  printf '%s%s%s%s%s%s%s\n' \
+    "$id" "$SEP" "$url" "$SEP" "$tracklist_name" "$SEP" "$tracklist_path"
+}
+
 yt_video_tracklist_download() {
   local input="${1:?yt_video_tracklist: missing url}"
   shift
@@ -96,26 +113,23 @@ yt_video_tracklist_download() {
     esac
   done
 
-  local id file_name file_path
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  file_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
-  file_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${file_name}"
+  local id url tracklist_name tracklist_path
+  IFS="$SEP" read -r id url tracklist_name tracklist_path \
+    < <(yt_video_tracklist_cache_info "$input" "$dir")
 
-  if (( refresh )) || [[ ! -s "$file_path" ]]; then
-    local args=(--dir "$dir")
-    (( refresh )) && args+=(--refresh)
+  local -a opts=(--dir "$dir")
+  (( refresh )) && opts+=(--refresh)
+  yt_video_meta_download "$input" "${opts[@]}" || return 1
 
+  if (( refresh )) || [[ ! -s "$tracklist_path" ]]; then
     local description duration
-    description="$(yt_video_meta "$input" description "${args[@]}")"
-    duration="$(yt_video_meta "$input" duration "${args[@]}")"
+    description="$(yt_video_meta "$input" description --dir "$dir")" || return 1
+    duration="$(yt_video_meta "$input" duration --dir "$dir")" || return 1
 
     __yt_video_tracklist_cache_build \
-      "$description" "$duration" "$file_path" || return 1
+      "$description" "$duration" "$tracklist_path" || return 1
   else
-    logi "tracklist cache already exists: $file_path"
+    logi "tracklist cache: $tracklist_path"
   fi
   
   return 0
@@ -137,25 +151,22 @@ yt_video_tracklist() {
     esac
   done
 
-  local id file_name file_path
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  file_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
-  file_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${file_name}"
+  local id url tracklist_name tracklist_path
+  IFS="$SEP" read -r id url tracklist_name tracklist_path \
+    < <(yt_video_tracklist_cache_info "$input" "$dir")
 
-  if (( refresh )) || [[ ! -s "$file_path" ]]; then
-    local args=(--dir "$dir")
-    (( refresh )) && args+=(--refresh)
+  local -a opts=(--dir "$dir")
+  (( refresh )) && opts+=(--refresh)
+  yt_video_meta_download "$input" "${opts[@]}" || return 1
 
+  if (( refresh )) || [[ ! -s "$tracklist_path" ]]; then
     local description duration
-    description="$(yt_video_meta "$input" description "${args[@]}")"
-    duration="$(yt_video_meta "$input" duration "${args[@]}")"
+    description="$(yt_video_meta "$input" description --dir "$dir")" || return 1
+    duration="$(yt_video_meta "$input" duration --dir "$dir")" || return 1
 
     __yt_video_tracklist_cache_build \
-      "$description" "$duration" "$file_path" || return 1
+      "$description" "$duration" "$tracklist_path" || return 1
   fi
 
-  cat "$file_path"
+  cat "$tracklist_path"
 }

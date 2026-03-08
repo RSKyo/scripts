@@ -202,3 +202,63 @@ letter_slice() {
     print substr($s, $offset, $length), "\n";
   ' "$start" "$end" <<< "$input"
 }
+
+letter_ratio_cmp() {
+  local input="$1"
+  local script
+  __letter_script_canonicalize script "${2:-}"
+  local op="$3"
+  local b="$4"
+
+  __perl '
+    use strict;
+    use warnings;
+    use utf8;
+
+    my $script = shift @ARGV;
+    my $op     = shift @ARGV;
+    my $b      = shift @ARGV;
+
+    my $s = join("", <>);
+    $s =~ s/\n\z//;
+
+    my $total = () = $s =~ /\p{L}/g;
+    exit 1 if $total == 0;
+
+    my $count = () = $s =~ /\p{Script=$script}/g;
+
+    my $ratio = $count / $total;
+
+    my $ok =
+         $op eq "gt" ? $ratio >  $b
+      :  $op eq "ge" ? $ratio >= $b
+      :  $op eq "lt" ? $ratio <  $b
+      :  $op eq "le" ? $ratio <= $b
+      :  $op eq "eq" ? $ratio == $b
+      :  $op eq "ne" ? $ratio != $b
+      :  die "invalid operator";
+
+    exit($ok ? 0 : 1);
+  ' "$script" "$op" "$b" <<< "$input"
+}
+
+letter_split_segments() {
+  local input="$1"
+
+  __perl '
+    use strict;
+    use warnings;
+
+    my $s = join("", <>);
+    $s =~ s/\n\z//;
+
+    while ($s =~ /(
+        \[[^\]]+\] |
+        [\p{Latin}\p{N}]+(?:\s+[\p{Latin}\p{N}]+)* |
+        [\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}]+(?:\s+[\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}]+)* |
+        \S
+    )/gx) {
+        print "$1\n";
+    }
+  ' <<< "$input"
+}

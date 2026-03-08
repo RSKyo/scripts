@@ -57,3 +57,5 @@ yt_video_url_canonical() {
 
   printf '%s%s\n' "$__YT_VIDEO_URL_PREFIX" "$id"
 }
+
+

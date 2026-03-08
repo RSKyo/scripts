@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Source-only library: lib/string
+# shellcheck disable=SC1091,SC2016
 
 # --- Source Guard ------------------------------------------------------------
 
@@ -8,7 +9,6 @@
 __STRING_SOURCED=1
 
 # --- Dependencies ------------------------------------------------------------
-# shellcheck disable=SC1091
 
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/num.source.sh"
@@ -88,16 +88,17 @@ string_slice() {
 # collapse duplicate spaces, and trim.
 string_normalize() {
   local input="${1-}"
+  local replacement="${2-}"
 
-  input="${input//\\/ }"
-  input="${input//\// }"
-  input="${input//:/ }"
-  input="${input//\*/ }"
-  input="${input//\?/ }"
-  input="${input//\"/ }"
-  input="${input//</ }"
-  input="${input//>/ }"
-  input="${input//|/ }"
+  input="${input//\\/"$replacement"}"
+  input="${input//\//"$replacement"}"
+  input="${input//:/"$replacement"}"
+  input="${input//\*/"$replacement"}"
+  input="${input//\?/"$replacement"}"
+  input="${input//\"/"$replacement"}"
+  input="${input//</"$replacement"}"
+  input="${input//>/"$replacement"}"
+  input="${input//|/"$replacement"}"
 
   while [[ "$input" == *"  "* ]]; do
     input="${input//  / }"
@@ -278,4 +279,19 @@ string_match() {
   [[ -z "$match" ]] && return 1
 
   return 0
+}
+
+string_translate_to_en() {
+  local input="$1"
+
+  local api='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t'
+  local q url
+
+  # shellcheck disable=SC2154
+  q=$("$jq_bin" -nr --arg v "$input" '$v|@uri') || return 1
+  url="${api}&q=${q}"
+
+  curl -fsSL "$url" |
+  "$jq_bin" -r '.[0][][0]' |
+  paste -sd' ' - || printf '%s\n' "$input"
 }
