@@ -194,3 +194,22 @@ text_demath() {
     }
   '
 }
+
+text_file() {
+  local file="${1:?text_file: missing file}"
+  local append="${2:-0}"
+
+  local dir
+  dir="$(dirname "$file")"
+
+  mkdir -p "$dir" || {
+    loge "Cannot create directory: $dir"
+    return 1
+  }
+
+  if (( append )); then
+    cat >> "$file"
+  else
+    cat > "$file"
+  fi
+}

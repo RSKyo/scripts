@@ -7,7 +7,7 @@
 __YT_VIDEO_FORMATS_SOURCED=1
 
 # Dependencies (bootstrap must be sourced by the entry script)
-source "$LIB_DIR/file.source.sh"
+source "$LIB_DIR/text.source.sh"
 source "$LIB_DIR/yt/video/url.source.sh"
 
 yt_video_formats() {
@@ -48,7 +48,7 @@ yt_video_formats_write() {
     --skip-download \
     --list-formats \
     "$url" 2>/dev/null |
-    file_write "$dir" "$file_name"; then
+    text_file "$file_path"; then
 
     if [[ -s "$file_path" ]]; then
       logi "Meta written: $file_path"

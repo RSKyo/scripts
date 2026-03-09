@@ -11,7 +11,7 @@ __YT_VIDEO_TRACKLIST_SOURCED=1
 # --- Dependencies ------------------------------------------------------------
 
 # Dependencies (bootstrap must be sourced by the entry script)
-source "$LIB_DIR/file.source.sh"
+source "$LIB_DIR/text.source.sh"
 
 source "$LIB_DIR/yt/video/url.source.sh"
 source "$LIB_DIR/yt/video/meta.source.sh"
@@ -69,7 +69,7 @@ __yt_video_tracklist_cache_build() {
 
 
   printf '%s\n' "${tracklist[@]}" |
-  file_write "$file_path" || {
+  text_file "$file_path" || {
     loge "failed to write tracklist cache: $file_path"
     return 1
   }
@@ -79,52 +79,39 @@ __yt_video_tracklist_cache_build() {
 
 # --- Public API --------------------------------------------------------------
 
-yt_video_tracklist_cache_info() {
-  local input="$1"
-  local dir="$2"
+yt_video_tracklist_path() {
+  local input="${1:?yt_video_tracklist: missing url}"
+  local dir="${2:-"$YT_CACHE_DIR"}"
 
-  local id url tracklist_name tracklist_path
-
+  local id tracklist_name tracklist_path
   id="$(yt_video_url_id "$input")" || {
     loge "Invalid input: $input"
     return 2
   }
-  url="$(yt_video_url_canonical "$id")" || return 2
   tracklist_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
   tracklist_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${tracklist_name}"
 
-  printf '%s%s%s%s%s%s%s\n' \
-    "$id" "$SEP" "$url" "$SEP" "$tracklist_name" "$SEP" "$tracklist_path"
+  printf '%s\n' "$tracklist_path"
 }
 
 yt_video_tracklist_download() {
   local input="${1:?yt_video_tracklist: missing url}"
-  shift
-  local dir="$YT_CACHE_DIR"
-  local refresh=0
+  local dir="${2:-"$YT_CACHE_DIR"}"
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --dir) shift; [[ $# -ge 1 ]] || return 2; dir="$1"; shift ;;
-      --refresh) shift; refresh=1 ;;
-      --) shift; break ;;
-      *) { loge "Invalid args: $1"
-        return 2; } ;;
-    esac
-  done
+  yt_video_meta_download "$input" "$dir" || return 1
 
-  local id url tracklist_name tracklist_path
-  IFS="$SEP" read -r id url tracklist_name tracklist_path \
-    < <(yt_video_tracklist_cache_info "$input" "$dir")
+  local id tracklist_name tracklist_path
+  id="$(yt_video_url_id "$input")" || {
+    loge "Invalid input: $input"
+    return 2
+  }
+  tracklist_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
+  tracklist_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${tracklist_name}"
 
-  local -a opts=(--dir "$dir")
-  (( refresh )) && opts+=(--refresh)
-  yt_video_meta_download "$input" "${opts[@]}" || return 1
-
-  if (( refresh )) || [[ ! -s "$tracklist_path" ]]; then
+  if [[ ! -s "$tracklist_path" ]]; then
     local description duration
-    description="$(yt_video_meta "$input" description --dir "$dir")" || return 1
-    duration="$(yt_video_meta "$input" duration --dir "$dir")" || return 1
+    description="$(yt_video_meta "$input" description "$dir")" || return 1
+    duration="$(yt_video_meta "$input" duration "$dir")" || return 1
 
     __yt_video_tracklist_cache_build \
       "$description" "$duration" "$tracklist_path" || return 1
@@ -137,32 +124,22 @@ yt_video_tracklist_download() {
 
 yt_video_tracklist() {
   local input="${1:?yt_video_tracklist: missing url}"
-  shift
-  local dir="$YT_CACHE_DIR"
-  local refresh=0
+  local dir="${2:-"$YT_CACHE_DIR"}"
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --dir) shift; [[ $# -ge 1 ]] || return 2; dir="$1"; shift ;;
-      --refresh) shift; refresh=1 ;;
-      --) shift; break ;;
-      *) { loge "Invalid args: $1"
-        return 2; } ;;
-    esac
-  done
+  yt_video_meta_download "$input" "$dir" || return 1
 
-  local id url tracklist_name tracklist_path
-  IFS="$SEP" read -r id url tracklist_name tracklist_path \
-    < <(yt_video_tracklist_cache_info "$input" "$dir")
+  local id tracklist_name tracklist_path
+  id="$(yt_video_url_id "$input")" || {
+    loge "Invalid input: $input"
+    return 2
+  }
+  tracklist_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
+  tracklist_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${tracklist_name}"
 
-  local -a opts=(--dir "$dir")
-  (( refresh )) && opts+=(--refresh)
-  yt_video_meta_download "$input" "${opts[@]}" || return 1
-
-  if (( refresh )) || [[ ! -s "$tracklist_path" ]]; then
+  if [[ ! -s "$tracklist_path" ]]; then
     local description duration
-    description="$(yt_video_meta "$input" description --dir "$dir")" || return 1
-    duration="$(yt_video_meta "$input" duration --dir "$dir")" || return 1
+    description="$(yt_video_meta "$input" description "$dir")" || return 1
+    duration="$(yt_video_meta "$input" duration "$dir")" || return 1
 
     __yt_video_tracklist_cache_build \
       "$description" "$duration" "$tracklist_path" || return 1

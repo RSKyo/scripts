@@ -9,39 +9,14 @@ __FILE_SOURCED=1
 
 # --- Public API --------------------------------------------------------------
 
-file_write() {
-  local file_path="${1:?file_write: missing file path}"
-  shift
-  local append=0
-  local tee=0
+file_tmp() {
+  local dir="${1:?file_tmp: missing dir}"
+  local ext="${2:-}"
+  local tmp
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --append) shift; append=1; ;;
-      --tee) shift; tee=1; ;;
-      --) shift; break ;;
-      *) return 2 ;;
-    esac
-  done
+  dir="${dir%/}"
+  tmp="$(mktemp "$dir/.tmp.XXXXXX")" || return 1
+  [[ -n "$ext" ]] && tmp="$tmp.$ext"
 
-  local dir="${file_path%/*}"
-  mkdir -p "$dir" || {
-    loge "Cannot create directory: $dir"
-    return 1
-  }
-
-  if (( tee )); then
-    if (( append )); then
-      tee -a "$file_path"
-    else
-      tee "$file_path"
-    fi
-    return
-  fi
-
-  if (( append )); then
-    cat >> "$file_path"
-  else
-    cat > "$file_path"
-  fi
+  printf '%s\n' "$tmp"
 }
