@@ -14,6 +14,8 @@
 source "$LIB_DIR/letter.source.sh"
 source "$LIB_DIR/video.source.sh"
 
+source "$LIB_DIR/yt/const.source.sh"
+source "$LIB_DIR/yt/common.source.sh"
 source "$LIB_DIR/yt/video/tracklist.source.sh"
 
 # --- Constants ---------------------------------------------------------------
@@ -29,16 +31,12 @@ declare -Ar __YT_VIDEO_FORMAT_MAP=(
 # --- Public API --------------------------------------------------------------
 
 yt_video_download() {
-  local input="${1:?yt_video_tracklist: missing url}"
+  local input="${1:?yt_video_tracklist: missing video id or url}"
   local dir="${2:-"$YT_CACHE_DIR"}"
   local mode="${3:-compat}"
 
   local id url video_name video_path
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  url="$(yt_video_url_canonical "$id")" || return 2
+  yt_video_set_id_url id url "$input" || return 2
   video_name="$(yt_video_meta "$input" title_en "$dir")" || return 1
   video_path="$(__yt_video_exists "$id" "$dir")"
 
@@ -54,8 +52,10 @@ yt_video_download() {
   video_path="$(__yt_video_download "$url" "$video_path" "$mode")" || 1
   video_metadata_write "$video_path" --id="$id"
 
-  local tracklist_path start end
-  tracklist_path="$(yt_video_tracklist_path "$input" "$dir")"
+  local tracklist_name tracklist_path
+  yt_video_tracklist_set_name_path tracklist_name tracklist_path "$input" "$dir"  || return 1
+
+  local start end
 
   if [[ -s "$tracklist_path" ]]; then
     local -a tracklist=()

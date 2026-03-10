@@ -13,7 +13,8 @@ __YT_VIDEO_TRACKLIST_SOURCED=1
 # Dependencies (bootstrap must be sourced by the entry script)
 source "$LIB_DIR/text.source.sh"
 
-source "$LIB_DIR/yt/video/url.source.sh"
+source "$LIB_DIR/yt/const.source.sh"
+source "$LIB_DIR/yt/common.source.sh"
 source "$LIB_DIR/yt/video/meta.source.sh"
 source "$LIB_DIR/yt/video/tracklist.resolve.source.sh"
 source "$LIB_DIR/yt/video/tracklist.title.source.sh"
@@ -79,34 +80,17 @@ __yt_video_tracklist_cache_build() {
 
 # --- Public API --------------------------------------------------------------
 
-yt_video_tracklist_path() {
-  local input="${1:?yt_video_tracklist: missing url}"
-  local dir="${2:-"$YT_CACHE_DIR"}"
-
-  local id tracklist_name tracklist_path
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  tracklist_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
-  tracklist_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${tracklist_name}"
-
-  printf '%s\n' "$tracklist_path"
-}
-
 yt_video_tracklist_download() {
-  local input="${1:?yt_video_tracklist: missing url}"
+  local input="${1:?yt_video_tracklist: missing video id or url}"
   local dir="${2:-"$YT_CACHE_DIR"}"
 
   yt_video_meta_download "$input" "$dir" || return 1
 
-  local id tracklist_name tracklist_path
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  tracklist_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
-  tracklist_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${tracklist_name}"
+  local id url
+  yt_video_set_id_url id url "$input" || return 2
+
+  local tracklist_name tracklist_path
+  yt_video_tracklist_set_name_path tracklist_name tracklist_path "$input" "$dir"  || return 1
 
   if [[ ! -s "$tracklist_path" ]]; then
     local description duration
@@ -123,18 +107,16 @@ yt_video_tracklist_download() {
 }
 
 yt_video_tracklist() {
-  local input="${1:?yt_video_tracklist: missing url}"
+  local input="${1:?yt_video_tracklist: missing video id or url}"
   local dir="${2:-"$YT_CACHE_DIR"}"
 
   yt_video_meta_download "$input" "$dir" || return 1
 
-  local id tracklist_name tracklist_path
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  tracklist_name="${id}.${YT_CACHE_TRACKLIST_NAME}"
-  tracklist_path="${dir%/}/${YT_CACHE_TRACKLIST_FOLDER}/${tracklist_name}"
+  local id url
+  yt_video_set_id_url id url "$input" || return 2
+
+  local tracklist_name tracklist_path
+  yt_video_tracklist_set_name_path tracklist_name tracklist_path "$input" "$dir"  || return 1
 
   if [[ ! -s "$tracklist_path" ]]; then
     local description duration

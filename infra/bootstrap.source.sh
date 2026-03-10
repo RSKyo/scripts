@@ -10,41 +10,6 @@ set -o pipefail
 __BOOTSTRAP_SOURCED=1
 
 readonly SEP=$'\x1f'
-readonly REGEX_TIMESTAMP='[0-9]+[[:space:]]*:[[:space:]]*[0-5][0-9]([[:space:]]*:[[:space:]]*[0-5][0-9])?'
-
-# Separator regex priority list (first match wins)
-readonly YT_VIDEO_TRACKLIST_TITLE_SEP_CLASSES=(
-  dash_sp
-  dash
-  pipe_sp
-  pipe
-  slash_sp
-  slash
-  dot
-)
-
-declare -Ar YT_VIDEO_TRACKLIST_TITLE_SEP_MAP=(
-  [dash_sp]='[[:space:]]+[-–—－][[:space:]]+'
-  [dash]='[-–—－]'
-  [pipe_sp]='[[:space:]]+\|[[:space:]]+'
-  [pipe]='\|'
-  [slash_sp]='[[:space:]]+\/[[:space:]]+'
-  [slash]='\/'
-  [dot]='·'
-)
-
-readonly YT_VIDEO_TRACKLIST_TITLE_SEP_SUPPORT=0.6
-readonly YT_VIDEO_TRACKLIST_END_TOL_PCT=30
-readonly YT_VIDEO_TRACKLIST_REPEAT_RATIO=1.5
-readonly YT_VIDEO_TRACKLIST_REPEAT_REGEX='(repeat|repetition|loop|looping|go on|^$)'
-
-readonly YT_CACHE_DIR="${YT_CACHE_DIR:-$HOME/Downloads/yt}"
-readonly YT_CACHE_META_FOLDER="${YT_CACHE_META_FOLDER:-.cache/meta}"
-readonly YT_CACHE_TRACKLIST_FOLDER="${YT_CACHE_TRACKLIST_FOLDER:-.cache/tracklist}"
-readonly YT_CACHE_TEMP_FOLDER="${YT_CACHE_TRACKLIST_FOLDER:-.cache/temp}"
-readonly YT_CACHE_TEMP_NAME='_tmp.txt'
-readonly YT_CACHE_META_NAME='meta.json'
-readonly YT_CACHE_TRACKLIST_NAME='tracklist.txt'
 
 # Directories
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)" || exit 1

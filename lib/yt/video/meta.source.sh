@@ -15,19 +15,10 @@ source "$LIB_DIR/letter.source.sh"
 source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/text.source.sh"
 
-source "$LIB_DIR/yt/video/url.source.sh"
+source "$LIB_DIR/yt/const.source.sh"
+source "$LIB_DIR/yt/common.source.sh"
 
-# --- Constants ---------------------------------------------------------------
-
-declare -Ar YT_VIDEO_META_FILTER_MAP=(
-  [id]='.id // empty'
-  [title]='.title // empty'
-  [title_en]='.title_en // empty'
-  [duration]='.duration // 0'
-  [description]='.description // empty'
-)
-
-# --- Internal Helpers --------------------------------------------------------
+# --- Public API --------------------------------------------------------------
 
 __yt_video_meta_title_en() {
   local file_path="$1"
@@ -61,74 +52,75 @@ __yt_video_meta_title_en() {
   mv "$tmp" "$file_path"
 }
 
-__yt_video_meta_cache_build() {
+__yt_video_meta_download() {
   local url="$1"
-  local file_path="$2"
-
-  logi "fetch video meta: $url"
+  local file="$2"
 
   "$yt_dlp" \
     --no-warnings \
     --skip-download \
     --dump-json \
     "$url" 2>/dev/null |
-  text_file "$file_path" || {
-    loge "failed to download video meta: $url"
-    return 1
-  }
+  text_file "$file" || return 1
 
-  __yt_video_meta_title_en "$file_path"
-
-  logi "meta cache saved: $file_path"
+  return 0
 }
 
-# --- Public API --------------------------------------------------------------
-
 yt_video_meta_download() {
-  local input="${1:?yt_video_meta_download: missing url}"
+  local input="${1:?yt_video_meta_download: missing video id or url}"
   local dir="${2:-"$YT_CACHE_DIR"}"
 
   local id url meta_name meta_path
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  url="$(yt_video_url_canonical "$id")" || return 2
-  meta_name="${id}.${YT_CACHE_META_NAME}"
-  meta_path="${dir%/}/${YT_CACHE_META_FOLDER}/${meta_name}"
+  yt_video_set_id_url id url "$input" || return 2
+  
+  local meta_name meta_path
+  yt_video_meta_set_name_path meta_name meta_path "$input" "$dir"  || return 1
   
   if [[ -s "$meta_path" ]]; then
-    __yt_video_meta_cache_build "$url" "$meta_path" || return 1
+    logi "fetch video meta: $url"
+    __yt_video_meta_download "$url" "$meta_path" || {
+      loge "failed to download video meta: $url"
+      return 1
+    }
+    logi "meta saved: $file"
+
+    __yt_video_meta_title_en "$file"
   else
-    logi "meta cache: $meta_path"
+    logi "meta: $meta_path"
   fi
   
   return 0
 }
 
 yt_video_meta() {
-  local input="${1:?yt_video_meta: missing url}"
+  local input="${1:?yt_video_meta: missing video id or url}"
   local field="${2:?yt_video_meta: missing meta field}"
   local dir="${3:-"$YT_CACHE_DIR"}"
+
+  local id url
+  yt_video_set_id_url id url "$input" || return 2
 
   local filter
   filter="${YT_VIDEO_META_FILTER_MAP[$field]}"
   [[ -n "$filter" ]] || return 2
 
-  local id url meta_name meta_path
-  id="$(yt_video_url_id "$input")" || {
-    loge "Invalid input: $input"
-    return 2
-  }
-  url="$(yt_video_url_canonical "$id")" || return 2
-  meta_name="${id}.${YT_CACHE_META_NAME}"
-  meta_path="${dir%/}/${YT_CACHE_META_FOLDER}/${meta_name}"
   
+  local meta_name meta_path
+  yt_video_meta_set_name_path meta_name meta_path "$input" "$dir"  || return 1
+
   if [[ ! -s "$meta_path" ]]; then
-    __yt_video_meta_cache_build "$url" "$meta_path" || return 1
+    logi "fetch video meta: $url"
+    __yt_video_meta_download "$url" "$meta_path" || {
+      loge "failed to download video meta: $url"
+      return 1
+    }
+    logi "meta saved: $file"
+
+    __yt_video_meta_title_en "$file"
+  else
+    logi "meta: $meta_path"
   fi
 
   # shellcheck disable=SC2154
   "$jq_bin" -r "$filter" "$meta_path" || return 1
 }
-

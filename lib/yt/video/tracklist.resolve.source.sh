@@ -15,6 +15,8 @@ source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/text.source.sh"
 source "$LIB_DIR/time.source.sh"
 
+source "$LIB_DIR/yt/const.source.sh"
+source "$LIB_DIR/yt/common.source.sh"
 source "$LIB_DIR/yt/video/tracklist.detect.source.sh"
 
 # --- Public API --------------------------------------------------------------
@@ -26,7 +28,7 @@ yt_video_tracklist_resolve() {
   local -a timestamp_lines
   readarray -t timestamp_lines < <(
     printf '%s\n' "$description" |
-    text_filter "$REGEX_TIMESTAMP" | 
+    text_filter "$TIMESTAMP_REGEX" | 
     text_demath
   )
 
@@ -49,7 +51,7 @@ yt_video_tracklist_resolve() {
 
   for (( i=start_idx; i<=end_idx; i++ )); do
     line="${timestamp_lines[i]}"
-    expanded="$(string_expand "$line" "$REGEX_TIMESTAMP")"
+    expanded="$(string_expand "$line" "$TIMESTAMP_REGEX")"
     IFS="$SEP" read -r left ts right <<< "$expanded"
 
     ts="${ts//[[:space:]]/}"

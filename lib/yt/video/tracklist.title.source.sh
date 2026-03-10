@@ -16,6 +16,9 @@ source "$LIB_DIR/num.source.sh"
 source "$LIB_DIR/string.source.sh"
 source "$LIB_DIR/text.source.sh"
 
+source "$LIB_DIR/yt/const.source.sh"
+source "$LIB_DIR/yt/common.source.sh"
+
 # --- Public API --------------------------------------------------------------
 
 yt_video_tracklist_title_align() {

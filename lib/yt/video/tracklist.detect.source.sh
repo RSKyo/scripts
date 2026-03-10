@@ -14,6 +14,8 @@ __YT_VIDEO_TRACKLIST_DETECT_SOURCED=1
 source "$LIB_DIR/num.source.sh"
 source "$LIB_DIR/time.source.sh"
 
+source "$LIB_DIR/yt/const.source.sh"
+source "$LIB_DIR/yt/common.source.sh"
 source "$LIB_DIR/yt/video/meta.source.sh"
 
 # --- Public API --------------------------------------------------------------
@@ -31,7 +33,7 @@ yt_video_tracklist_time_range() {
 
   local i ts sec 
   for (( i=0; i<total; i++ )); do
-    [[ "${_timestamp_lines_ref[i]}" =~ $REGEX_TIMESTAMP ]] || continue
+    [[ "${_timestamp_lines_ref[i]}" =~ $TIMESTAMP_REGEX ]] || continue
 
     ts="${BASH_REMATCH[0]}"
     [[ -n "$ts" ]] || continue
@@ -64,7 +66,7 @@ yt_video_tracklist_timestamp_is_left() {
   local line match left right
 
   for line in "${_timestamp_lines_ref[@]}"; do
-    [[ "$line" =~ $REGEX_TIMESTAMP ]] || continue
+    [[ "$line" =~ $TIMESTAMP_REGEX ]] || continue
     match="${BASH_REMATCH[0]}"
     [[ -n "$match" ]] || continue
 
