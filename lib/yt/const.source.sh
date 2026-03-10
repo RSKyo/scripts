@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Source-only library: lib/yt/const
+# shellcheck disable=SC2034
 
 # --- Source Guard ------------------------------------------------------------
 
@@ -57,3 +58,6 @@ readonly YT_CACHE_META_FOLDER="${YT_CACHE_META_FOLDER:-.cache/meta}"
 readonly YT_CACHE_TRACKLIST_FOLDER="${YT_CACHE_TRACKLIST_FOLDER:-.cache/tracklist}"
 readonly YT_CACHE_META_NAME='meta.json'
 readonly YT_CACHE_TRACKLIST_NAME='tracklist.txt'
+
+readonly YT_COOKIE_FILE="$INFRA_DIR/cookies.txt"
+readonly YT_COOKIE_VALID_URL='https://www.youtube.com/watch?v=dQw4w9WgXcQ'

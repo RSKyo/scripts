@@ -25,8 +25,6 @@ __yt_video_tracklist_cache_build() {
   local duration="$2"
   local file_path="$3"
 
-  logi "resolve video tracklist from description"
-
   local -a tracklist=()
   readarray -t tracklist < <(
     yt_video_tracklist_resolve "$description" "$duration" |
@@ -68,14 +66,9 @@ __yt_video_tracklist_cache_build() {
     yt_video_tracklist_resolve_termination "$duration"
   )
 
-
   printf '%s\n' "${tracklist[@]}" |
-  text_file "$file_path" || {
-    loge "failed to write tracklist cache: $file_path"
-    return 1
-  }
+  text_file "$file_path" || return 1
 
-  logi "tracklist cache saved: $file_path"
 }
 
 # --- Public API --------------------------------------------------------------
@@ -84,23 +77,26 @@ yt_video_tracklist_download() {
   local input="${1:?yt_video_tracklist: missing video id or url}"
   local dir="${2:-"$YT_CACHE_DIR"}"
 
-  yt_video_meta_download "$input" "$dir" || return 1
-
-  local id url
-  yt_video_set_id_url id url "$input" || return 2
-
-  local tracklist_name tracklist_path
-  yt_video_tracklist_set_name_path tracklist_name tracklist_path "$input" "$dir"  || return 1
+  local tracklist_path
+  tracklist_path="$(yt_video_tracklist_path "$input" "$dir")"  || return 1
 
   if [[ ! -s "$tracklist_path" ]]; then
+    yt_video_meta_download "$input" "$dir" || return 1
+
     local description duration
     description="$(yt_video_meta "$input" description "$dir")" || return 1
     duration="$(yt_video_meta "$input" duration "$dir")" || return 1
 
+    logi "resolve tracklist from description"
     __yt_video_tracklist_cache_build \
-      "$description" "$duration" "$tracklist_path" || return 1
+      "$description" "$duration" "$tracklist_path" || {
+      loge "failed to write tracklist cache: $file_path"
+      return 1
+    }
+    logi "tracklist saved: $file_path"
+
   else
-    logi "tracklist cache: $tracklist_path"
+    logi "tracklist: $tracklist_path"
   fi
   
   return 0
@@ -110,21 +106,26 @@ yt_video_tracklist() {
   local input="${1:?yt_video_tracklist: missing video id or url}"
   local dir="${2:-"$YT_CACHE_DIR"}"
 
-  yt_video_meta_download "$input" "$dir" || return 1
-
-  local id url
-  yt_video_set_id_url id url "$input" || return 2
-
-  local tracklist_name tracklist_path
-  yt_video_tracklist_set_name_path tracklist_name tracklist_path "$input" "$dir"  || return 1
+  local tracklist_path
+  tracklist_path="$(yt_video_tracklist_path "$input" "$dir")"  || return 1
 
   if [[ ! -s "$tracklist_path" ]]; then
+    yt_video_meta_download "$input" "$dir" || return 1
+
     local description duration
     description="$(yt_video_meta "$input" description "$dir")" || return 1
     duration="$(yt_video_meta "$input" duration "$dir")" || return 1
 
+    logi "resolve video tracklist from description"
     __yt_video_tracklist_cache_build \
-      "$description" "$duration" "$tracklist_path" || return 1
+      "$description" "$duration" "$tracklist_path" || {
+      loge "failed to write tracklist cache: $file_path"
+      return 1
+    }
+    logi "tracklist saved: $file_path"
+
+  else
+    logi "tracklist: $tracklist_path"
   fi
 
   cat "$tracklist_path"

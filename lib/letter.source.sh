@@ -42,9 +42,10 @@ letter_count() {
     use warnings;
 
     my $script = shift @ARGV // "";
-    my $s = join("", <>);
+    local $/;
+    my $s = <>;
     # remove the newline added by <<< (only one)
-    $s =~ s/\n\z//;
+    chomp $s;
 
     my $count;
 
@@ -71,9 +72,10 @@ letter_trim() {
     use warnings;
 
     my $extra = shift @ARGV;
-    my $s = join("", <>);
+    local $/;
+    my $s = <>;
     # remove the newline added by <<< (only one)
-    $s =~ s/\n\z//;
+    chomp $s;
 
     $s =~ s/^[^\p{L}\Q$extra\E]+//;
     $s =~ s/[^\p{L}\Q$extra\E]+$//;
@@ -95,9 +97,10 @@ letter_demath() {
     use warnings;
     use Unicode::Normalize;
 
-    my $s = join("", <>);
+    local $/;
+    my $s = <>;
     # remove the newline added by <<< (only one)
-    $s =~ s/\n\z//;
+    chomp $s;
 
     # Compatibility decomposition
     $s = NFKD($s);
@@ -120,38 +123,16 @@ first_letter_pos() {
     use strict;
     use warnings;
 
-    my $s = join("", <>);
-    # remove the newline added by <<< (only one)
-    $s =~ s/\n\z//;
+    local $/;
+    my $s = <>;
+    chomp $s;
 
     if ($s =~ /(\p{L})/) {
-        print (($-[1] + 1) . "\n");
-    } else {
-        print "0\n";
+      print(($-[1] + 1) . "\n");
+      exit 0;
     }
-  ' <<< "$input"
-}
 
-# Return the 1-based position of the last Unicode letter.
-# - A letter is defined by \p{L}.
-# - Returns 0 if no letter is found.
-# - Output always ends with a newline.
-last_letter_pos() {
-  local input="$1"
-
-  __perl '
-    use strict;
-    use warnings;
-
-    my $s = join("", <>);
-    # remove the newline added by <<< (only one)
-    $s =~ s/\n\z//;
-
-    if ($s =~ /(\p{L})(?!.*\p{L})/s) {
-      print (($-[1] + 1) . "\n");
-    } else {
-      print "0\n";
-    }
+    exit 1;
   ' <<< "$input"
 }
 
@@ -175,9 +156,11 @@ letter_slice() {
 
     my $start = shift @ARGV;
     my $end   = shift @ARGV;
-    my $s     = join("", <>);
+
+    local $/;
+    my $s = <>;
     # remove the newline added by <<< (only one)
-    $s =~ s/\n\z//;
+    chomp $s;
 
     my $len = length($s);
 
@@ -219,8 +202,10 @@ letter_ratio_cmp() {
     my $op     = shift @ARGV;
     my $b      = shift @ARGV;
 
-    my $s = join("", <>);
-    $s =~ s/\n\z//;
+    local $/;
+    my $s = <>;
+    # remove the newline added by <<< (only one)
+    chomp $s;
 
     my $total = () = $s =~ /\p{L}/g;
     exit 1 if $total == 0;
@@ -240,25 +225,4 @@ letter_ratio_cmp() {
 
     exit($ok ? 0 : 1);
   ' "$script" "$op" "$b" <<< "$input"
-}
-
-letter_split_segments() {
-  local input="$1"
-
-  __perl '
-    use strict;
-    use warnings;
-
-    my $s = join("", <>);
-    $s =~ s/\n\z//;
-
-    while ($s =~ /(
-        \[[^\]]+\] |
-        [\p{Latin}\p{N}]+(?:\s+[\p{Latin}\p{N}]+)* |
-        [\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}]+(?:\s+[\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}]+)* |
-        \S
-    )/gx) {
-        print "$1\n";
-    }
-  ' <<< "$input"
 }

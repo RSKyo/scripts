@@ -20,8 +20,7 @@ source "$LIB_DIR/yt/video/tracklist.source.sh"
 
 # --- Constants ---------------------------------------------------------------
 
-readonly __YT_COOKIE="$LIB_DIR/yt/video/cookies.txt"
-readonly __YT_COOKIE_VALID_URL='https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+
 
 declare -Ar __YT_VIDEO_FORMAT_MAP=(
   [compat]='bv*[vcodec^=avc1][ext=mp4]+ba[ext=m4a]/b[vcodec^=avc1][ext=mp4]'
@@ -36,7 +35,8 @@ yt_video_download() {
   local mode="${3:-compat}"
 
   local id url video_name video_path
-  yt_video_set_id_url id url "$input" || return 2
+  id="$(yt_video_id "$input")" || return 2
+  url="$(yt_video_url "$input")" || return 2
   video_name="$(yt_video_meta "$input" title_en "$dir")" || return 1
   video_path="$(__yt_video_exists "$id" "$dir")"
 
@@ -52,8 +52,8 @@ yt_video_download() {
   video_path="$(__yt_video_download "$url" "$video_path" "$mode")" || 1
   video_metadata_write "$video_path" --id="$id"
 
-  local tracklist_name tracklist_path
-  yt_video_tracklist_set_name_path tracklist_name tracklist_path "$input" "$dir"  || return 1
+  local tracklist_path
+  tracklist_path="$(yt_video_tracklist_path "$input" "$dir")"  || return 1
 
   local start end
 
@@ -104,9 +104,9 @@ __yt_video_exists() {
 __yt_cookie_valid() {
   "$yt_dlp" \
     --no-playlist \
-    --cookies "$__YT_COOKIE" \
+    --cookies "$YT_COOKIE_FILE" \
     --print uploader \
-    "$__YT_COOKIE_VALID_URL" \
+    "$YT_COOKIE_VALID_URL" \
     >/dev/null 2>&1 || {
       loge "YouTube cookie expired"
       return 1

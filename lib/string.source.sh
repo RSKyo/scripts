@@ -280,18 +280,3 @@ string_match() {
 
   return 0
 }
-
-string_translate_to_en() {
-  local input="$1"
-
-  local api='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t'
-  local q url
-
-  # shellcheck disable=SC2154
-  q=$("$jq_bin" -nr --arg v "$input" '$v|@uri') || return 1
-  url="${api}&q=${q}"
-
-  curl -fsSL "$url" |
-  "$jq_bin" -r '.[0][][0]' |
-  paste -sd' ' - || printf '%s\n' "$input"
-}

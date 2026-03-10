@@ -35,7 +35,6 @@ yt_video_tracklist_title_align() {
     title="${tracklist[i]##*"$SEP"}"
 
     pos="$(first_letter_pos "$title")" || continue
-    (( pos > 0 )) || continue
 
     if (( min_pos == 0 )) || (( pos < min_pos )); then
       min_pos="$pos"
