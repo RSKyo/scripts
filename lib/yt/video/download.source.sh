@@ -20,8 +20,6 @@ source "$LIB_DIR/yt/video/tracklist.source.sh"
 
 # --- Constants ---------------------------------------------------------------
 
-
-
 declare -Ar __YT_VIDEO_FORMAT_MAP=(
   [compat]='bv*[vcodec^=avc1][ext=mp4]+ba[ext=m4a]/b[vcodec^=avc1][ext=mp4]'
   [hd]='bv*+ba/b'

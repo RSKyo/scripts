@@ -1,118 +1,30 @@
 #!/usr/bin/env bash
+# Source-only library: lib/clichatgpt
 
-readonly GOOGLE_CHROME='Google Chrome'
-readonly TARGET_URL='https://chatgpt.com/?temporary-chat=true'
-readonly AUTO_TALK_SIGN='@kyo'
+# --- Source Guard ------------------------------------------------------------
 
-mouse_watch() {
-  local last=""
-  local pos
+# Prevent multiple sourcing
+[[ -n "${__CLICHATGPT_SOURCED+x}" ]] && return 0
+__CLICHATGPT_SOURCED=1
 
-  echo "Watching mouse position... (Press Ctrl+C to stop)"
+# shellcheck disable=SC2034
+readonly CLICHATGPT_BROWSER='Google Chrome'
+readonly CLICHATGPT_URL='https://chatgpt.com/?temporary-chat=true'
+readonly CLICHATGPT_SIGN='@clichatgpt'
 
-  while true; do
-    pos="$(cliclick p)"
+# --- Dependencies ------------------------------------------------------------
+# shellcheck disable=SC1091
 
-    if [[ "$pos" != "$last" ]]; then
-      echo "$pos"
-      last="$pos"
-    fi
+# Dependencies (bootstrap must be sourced by the entry script)
+source "$LIB_DIR/macos_gui.source.sh"
 
-    sleep 0.05
-  done
-}
-
-get_front_app() {
-  sleep 3
-  osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'
-}
-
-win_active() {
-  local app="${1:?missing app name}"
-
-  osascript <<EOF
-tell application "$app"
-  activate
-end tell
-EOF
-}
-
-screen_rect() {
-  osascript -l JavaScript <<'EOF'
-ObjC.import('AppKit')
-
-function run() {
-  const screen = $.NSScreen.mainScreen
-  const frame = screen.frame
-  const visible = screen.visibleFrame
-
-  const x = Math.round(visible.origin.x)
-  const y = Math.round(frame.size.height - visible.origin.y - visible.size.height)
-  const w = Math.round(visible.size.width)
-  const h = Math.round(visible.size.height)
-
-  return [x, y, w, h].join(' ')
-}
-EOF
-}
-
-win_rect() {
-  local app="${1:?missing app}"
-
-  osascript <<EOF
-tell application "System Events"
-  tell process "$app"
-    set p to position of front window
-    set s to size of front window
-    set out to (item 1 of p as text) & " " & (item 2 of p as text) & " " & (item 1 of s as text) & " " & (item 2 of s as text)
-    return out
-  end tell
-end tell
-EOF
-}
-
-win_set_rect() {
-  local app="${1:?missing app name}"
-  local l="${2:-0}"
-  local t="${3:-0}"
-  local w="${4:-1200}"
-  local h="${5:-800}"
-
-  osascript <<EOF
-tell application "$app"
-  activate
-  set w1 to front window
-  set bounds of w1 to {$l, $t, $((l+w)), $((t+h))}
-end tell
-EOF
-}
-
-win_move() {
-  local app="${1:?missing app name}"
-  local l="${2:-0}"
-  local t="${3:-0}"
-
-  local w h _
-  read -r _ _ w h <<< "$(win_rect "$app")"
-  win_set_rect "$app" "$l" "$t" "$w" "$h"
-}
-
-win_resize() {
-  local app="${1:?missing app name}"
-  local w="${2:-1200}"
-  local h="${3:-800}"
-
-  local l t _
-  read -r l t _ _ <<< "$(win_rect "$app")"
-  win_set_rect "$app" "$l" "$t" "$w" "$h"
-}
-
+# --- Public API --------------------------------------------------------------
 
 xxx_check_browser() {
   local window_count
 
   window_count="$(osascript -e "
-    tell application \"$GOOGLE_CHROME\"
+    tell application \"$CLICHATGPT_BROWSER\"
       if it is running then
         return (count of windows)
       else
@@ -121,14 +33,14 @@ xxx_check_browser() {
     end tell
   ")"
 
-  if (( window_count == 0 )); then
-    echo "Launching $GOOGLE_CHROME..."
-    open -a "$GOOGLE_CHROME"
+  if win_exists "$CLICHATGPT_BROWSER"; then
+    echo "Launching $CLICHATGPT_BROWSER..."
+    open -a "$CLICHATGPT_BROWSER" "$CLICHATGPT_URL"
 
     # 固定浏览器位置、大小
     xxx_fixed_browser
     # 复制网址到剪切板
-    pbcopy <<< "$TARGET_URL"
+    pbcopy <<< "$CLICHATGPT_URL"
     # 新开窗口光标默认在地址栏
     # 粘贴->回车
     cliclick kd:cmd t:v ku:cmd w:100 kp:enter w:1000
@@ -137,7 +49,7 @@ xxx_check_browser() {
     xxx_fixed_browser
 
     local rect
-    rect="$(win_rect "$GOOGLE_CHROME")"
+    rect="$(win_frame "$CLICHATGPT_BROWSER")"
 
     local l t w h input_xy
     read -r l t w h <<< "$rect"
@@ -152,13 +64,13 @@ xxx_check_browser() {
 
 xxx_fixed_browser() {
   local sl st sw sh
-  read -r sl st sw sh <<< "$(screen_rect)"
+  read -r sl st sw sh <<< "$(screen_workarea)"
 
   local l t w=600 h=500
   l="$((sl+sw-w))"
   t="$st"
   
-  win_set_rect "$GOOGLE_CHROME" "$l" "$t" "$w" "$h"
+  win_frame_set "$CLICHATGPT_BROWSER" "$l" "$t" "$w" "$h"
 }
 
 yt_video_title_prompt(){
@@ -166,7 +78,7 @@ yt_video_title_prompt(){
   local title="$2"
 
   local prompt="重新给我一个中文标题，\
-格式为: ${AUTO_TALK_SIGN} ID|歌名
+格式为: ${CLICHATGPT_SIGN} ID|歌名
 要求: 不要符号、图标、emoji; 不要音乐、歌单等说明; 画面感、文艺; 仅输出格式化后的内容; 
 原标题: ${title}
 ID: ${id}"
@@ -199,7 +111,7 @@ test1() {
   
   # 页面空白处坐标，用于页面向下滚动，途径复制按钮
   local rect l t w h blank_xy
-  rect="$(win_rect "$GOOGLE_CHROME")"
+  rect="$(win_frame "$CLICHATGPT_BROWSER")"
   read -r l t w h <<< "$rect"
   printf -v blank_xy '%d,%d' $((l+25)) $((t+h-225))
 
@@ -231,8 +143,8 @@ test1() {
 xxx_catch_result() {
   local result
   result="$(pbpaste)"
-  if [[ $result == "$AUTO_TALK_SIGN "* ]]; then
-    printf '%s\n' "${result#"$AUTO_TALK_SIGN" }"
+  if [[ $result == "$CLICHATGPT_SIGN "* ]]; then
+    printf '%s\n' "${result#"$CLICHATGPT_SIGN" }"
     return 0
   fi
 
