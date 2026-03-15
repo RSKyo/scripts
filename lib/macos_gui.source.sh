@@ -4,8 +4,16 @@
 # --- Source Guard ------------------------------------------------------------
 
 # Prevent multiple sourcing
-# [[ -n "${__MACOS_GUI_SOURCED+x}" ]] && return 0
-# __MACOS_GUI_SOURCED=1
+[[ -n "${__MACOS_GUI_SOURCED+x}" ]] && return 0
+__MACOS_GUI_SOURCED=1
+
+# --- Constants ---------------------------------------------------------------
+
+readonly CHROME_TABS_WAIT_STABLE_MAX_TRY=50
+readonly CHROME_TABS_WAIT_STABLE_SLEEP_TIME=0.1
+readonly CHROME_TABS_WAIT_STABLE_THRESHOLD=3
+readonly CHROME_TAB_WAIT_LOAD_MAX_TRY=100
+readonly CHROME_TAB_WAIT_LOAD_SLEEP_TIME=0.1
 
 ###############################################################################
 # cliclick: macOS CLI tool for mouse and keyboard automation
@@ -73,7 +81,7 @@ function run() {
 EOF
 }
 
-app_front() {
+front_app() {
   local delay="${1:-0}"
   (( delay > 0 )) && sleep "$delay"
 
@@ -89,6 +97,17 @@ app_activate() {
 
   osascript <<EOF
 tell application "$app" to activate
+
+tell application "System Events"
+  tell process "$app"
+    try
+      set frontmost to true
+      if (count of windows) > 0 then
+        set value of attribute "AXMinimized" of window 1 to false
+      end if
+    end try
+  end tell
+end tell
 EOF
 }
 
@@ -152,11 +171,9 @@ win_frame_set() {
   local b=$((t + h))
 
   osascript <<EOF
-tell application "System Events"
-  tell process "$app"
-    if (count of windows) is 0 then return
-    set bounds of front window to {$l, $t, $r, $b}
-  end tell
+tell application "$app"
+  if (count of windows) = 0 then return
+  set bounds of window 1 to {$l, $t, $r, $b}
 end tell
 EOF
 }
@@ -289,105 +306,173 @@ win_resize() {
   win_frame_set "$app" "$l" "$t" "$w" "$h"
 }
 
-browser_tabs_count() {
-  local app="${1:?missing app}"
+###############################################################################
+# Google Chrome
+###############################################################################
 
+chrome_tabs_count() {
   osascript <<EOF
-tell application "$app"
-  if not running then return 0
-  return (count of tabs of front window)
-end tell
+if application "Google Chrome" is running then
+  tell application "Google Chrome"
+    if (count of windows) = 0 then return 0
+    return count of tabs of front window
+  end tell
+else
+  return 0
+end if
 EOF
 }
 
-browser_tabs() {
-  local app="${1:?browser_tabs: missing app}"
+chrome_tabs_wait_stable() {
+  local last=-1
+  local count
+  local stable=0
+  local i
+
+  for ((i=0; i<CHROME_TABS_WAIT_STABLE_MAX_TRY; i++)); do
+    count="$(chrome_tabs_count)" || return 1
+
+    if (( count == last )); then
+      ((stable++))
+      (( stable >= CHROME_TABS_WAIT_STABLE_THRESHOLD )) && {
+        printf '%s\n' "$count"
+        return 0
+      }
+    else
+      stable=0
+      last="$count"
+    fi
+
+    sleep "$CHROME_TABS_WAIT_STABLE_SLEEP_TIME"
+  done
+
+  return 1
+}
+
+chrome_tab_wait_loaded() {
+  local idx="${1:?chrome_tab_wait_loaded: missing idx}"
+  local i
+
+  for ((i=0; i<CHROME_TAB_WAIT_LOAD_MAX_TRY; i++)); do
+    chrome_tab_is_loaded "$idx" && return 0
+    sleep "$CHROME_TAB_WAIT_LOAD_SLEEP_TIME"
+  done
+
+  return 1
+}
+
+chrome_tab() {
+  local idx="${1:?chrome_tab: missing idx}"
   local sep=$'\x1f'
 
   osascript <<EOF
-tell application "$app"
-  if not running then return ""
+tell application "Google Chrome"
+  if not running then return
 
   set sep to "$sep"
-  set out to ""
-  set i to 1
+  set t to tab $idx of front window
+  set activeIdx to active tab index of front window
 
-  repeat with t in tabs of front window
-    set tabTitle to title of t
-    set tabURL to URL of t
-    set tabLoading to loading of t
-    set tabActive to active tab index of front window is i
+  set tabTitle to title of t
+  set tabURL to URL of t
+  set tabLoading to loading of t
+  set tabActive to (activeIdx is $idx)
 
-    set out to out & i & sep & tabTitle & sep & tabURL & sep & tabLoading & sep & tabActive & "\n"
-    set i to i + 1
-  end repeat
-
-  return out
+  return "$idx" & sep & tabTitle & sep & tabURL & sep & (tabLoading as text) & sep & (tabActive as text)
 end tell
 EOF
 }
 
-browser_tabs_find() {
-  local title url loading active
+__chrome_tab_loading() {
+  local idx="$1"
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --title)   title="$2"; shift 2 ;;
-      --url)     url="$2"; shift 2 ;;
-      --loading) loading="$2"; shift 2 ;;
-      --active)  active="$2"; shift 2 ;;
-      *) return 2 ;;
-    esac
-  done
-
-  local sep=$'\x1f'
-  local idx tab_title tab_url tab_loading tab_active
-  local found=0
-
-  while IFS="$sep" read -r idx tab_title tab_url tab_loading tab_active; do
-    [[ -n "$title"   && "$tab_title"   != *"$title"* ]] && continue
-    [[ -n "$url"     && "$tab_url"     != "$url"*   ]] && continue
-    [[ -n "$loading" && "$tab_loading" != "$loading" ]] && continue
-    [[ -n "$active"  && "$tab_active"  != "$active"  ]] && continue
-
-    printf '%s%s%s%s%s%s%s%s%s\n' \
-      "$idx" "$sep" "$tab_title" "$sep" "$tab_url" "$sep" "$tab_loading" "$sep" "$tab_active"
-
-    found=1
-  done
-
-  (( found ))
+  osascript <<EOF
+tell application "Google Chrome"
+  if not running then return
+  loading of tab $idx of front window
+end tell
+EOF
 }
 
-browser_tab_open() {
-  local app="${1:?missing app}"
-  local url="${2:-}"
+chrome_tab_is_loaded() {
+  local idx="${1:?chrome_tab_is_loaded: missing idx}"
+  local count loading
 
-  if ! win_exists "$app"; then
-    open -a "$app" "$url"
-    return
+  loading="$(__chrome_tab_loading "$idx")" || return 1
+  [[ "$loading" == "false" ]]
+}
+
+chrome_tab_active_index() {
+  osascript <<'EOF'
+tell application "Google Chrome"
+  active tab index of front window
+end tell
+EOF
+}
+
+chrome_tab_activate() {
+  local idx="${1:?chrome_tab_activate: missing idx}"
+
+  osascript <<EOF
+tell application "Google Chrome"
+  activate
+  set active tab index of front window to $idx
+end tell
+EOF
+}
+
+chrome_tab_open() {
+  local url="${1:-}"
+  local sep=$'\x1f'
+  local idx
+
+  if ! win_exists "Google Chrome"; then
+    open -a "Google Chrome" "$url" || return 1
+
+    local count
+    count="$(chrome_tabs_wait_stable)" || return 1
+    if chrome_tab_wait_loaded "$count"; then
+      return 0
+    else
+      loge "chrome tab failed to load: idx=$count url=$url"
+      return 1
+    fi
   fi
 
-  browser_tab_new "$app" "$url"
+  idx="$(chrome_tab_index_by_url "$url")"
+
+  if [[ -n "$idx" ]]; then
+    chrome_tab_activate "$idx" || return 1
+  else
+    chrome_tab_new "$url" || return 1
+  fi
 }
 
-browser_tab_new() {
-  local app="${1:?missing app}"
-  local url="${2:-}"
-
+chrome_tab_new() {
+  local url="${1:-about:blank}"
   osascript <<EOF
-tell application "$app"
-  tell front window to make new tab with properties {URL:"$url"}
+tell application "Google Chrome"
+  if not running then return
+  tell front window
+    make new tab with properties {URL:"$url"}
+  end tell
 end tell
 EOF
 }
 
-browser_tab_close() {
-  local app="${1:?missing app}"
-  local idx="${2:?missing index}"
+chrome_tab_close() {
+  local input="${1:?chrome_tab_close: missing input}"
+  local idx
+
+  if [[ "$input" =~ ^[0-9]+$ ]]; then
+    idx="$input"
+  else
+    idx="$(chrome_tab_index_by_url "$input")" || return 1
+  fi
 
   osascript <<EOF
-tell application "$app"
+tell application "Google Chrome"
+  if not running then return
   tell front window
     close tab $idx
   end tell
@@ -395,31 +480,28 @@ end tell
 EOF
 }
 
-browser_tab_activate() {
-  local app="${1:?missing app}"
-  local idx="${2:?missing index}"
+__chrome_tab_index_by_url() {
+  local url="$1"
 
   osascript <<EOF
-tell application "$app"
-  set active tab index of front window to $idx
+tell application "Google Chrome"
+  if not running then return
+  set i to 1
+  repeat with t in tabs of front window
+    if URL of t contains "$url" then return i
+    set i to i + 1
+  end repeat
+  return
 end tell
 EOF
 }
 
-browser_tab() {
-  local app="${1:?browser_tab: missing app}"
-  local idx="${2:?browser_tab: missing idx}"
+chrome_tab_index_by_url() {
+  local url="${1:-about:blank}"
+  local idx
 
-  local line
-  local i=1
+  idx="$(__chrome_tab_index_by_url "$url")"
 
-  while IFS= read -r line; do
-    (( i++ == idx )) && {
-      printf '%s\n' "$line"
-      return 0
-    }
-  done < <(browser_tabs "$app")
-
-  return 1
+  [[ -n "$idx" ]] || return 1
+  printf '%s\n' "$idx"
 }
-

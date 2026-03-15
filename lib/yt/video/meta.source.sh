@@ -70,3 +70,17 @@ yt_video_meta() {
   # shellcheck disable=SC2154
   "$jq_bin" -r "$filter" "$meta_path" || return 1
 }
+
+
+# yt_video_title_prompt(){
+#   local id="$1"
+#   local title="$2"
+
+#   local prompt="重新给我一个中文标题，\
+# 格式为: ${CLICHATGPT_SIGN} ID|歌名
+# 要求: 不要符号、图标、emoji; 不要音乐、歌单等说明; 画面感、文艺; 仅输出格式化后的内容; 
+# 原标题: ${title}
+# ID: ${id}"
+
+#   printf '%s\n' "$prompt"
+# }
