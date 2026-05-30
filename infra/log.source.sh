@@ -1,57 +1,52 @@
 #!/usr/bin/env bash
-# shellcheck shell=bash
 # Source-only library: log
-# Provides simple logging functions.
-# - debug output controlled by debug_on / debug_off
-# - logs print to stderr
 
-# Prevent multiple sourcing
-[[ -n "${__LOG_SOURCED+x}" ]] && return 0
+# --- Source Guard ------------------------------------------------------------
+
+[[ -n ${__LOG_SOURCED+x} ]] && return
 __LOG_SOURCED=1
 
-# Debug flag (default: off)
-__LOG_DEBUG=0
+# --- Config ------------------------------------------------------------
 
-# Output function name flag (default: off)
-__LOG_FUNC=0
+: "${LOG_VERBOSE:=1}"
+: "${LOG_FD:=2}"
 
-# -------------------------------------------------
-# Internal Helpers
-# -------------------------------------------------
+# Enable color only if terminal
+[[ -t "$LOG_FD" ]] && __LOG_ERR_COLOR=1 || __LOG_ERR_COLOR=0
 
-# Emit a log line to stderr.
-# Format: [LEVEL] function(): message
-__log_emit() {
-  local level="$1"
+# --- Public API --------------------------------------------------------------
+
+log() {
+  (( LOG_VERBOSE )) || return
+
+  local module="$1"
   shift
 
-  local prefix="[$level]"
+  printf '[%s] %s\n' "$module" "$*" >&"$LOG_FD"
+}
 
-  if [[ "$__LOG_FUNC" == "1" ]]; then
-    prefix+=" ${FUNCNAME[2]:-MAIN}():"
+loge() {
+  if (( __LOG_ERR_COLOR )); then
+    printf '\033[31m[ERROR]\033[0m %s\n' "$*" >&"$LOG_FD"
   else
-    prefix+=":"
+    printf '[ERROR] %s\n' "$*" >&"$LOG_FD"
   fi
-
-  printf '%s %s\n' "$prefix" "$*" >&2
 }
 
-# -------------------------------------------------
-# Public API
-# -------------------------------------------------
+logp() {
+  (( LOG_VERBOSE )) || return
 
-debug_on()  { __LOG_DEBUG=1; }
-debug_off() { __LOG_DEBUG=0; }
-log_func_on()  { __LOG_FUNC=1; }
-log_func_off() { __LOG_FUNC=0; }
+  local module="$1"
+  shift
 
-# Debug log (only prints when debug is on)
-logd() {
-  [[ "$__LOG_DEBUG" == "1" ]] || return 0
-  __log_emit "DEBUG" "$@"
+  printf '\r[%s] %s' "$module" "$*" >&"$LOG_FD"
 }
 
-# Always print
-logi() { __log_emit "INFO"  "$@"; }
-logw() { __log_emit "WARN"  "$@"; }
-loge() { __log_emit "ERROR" "$@"; }
+logp_done() {
+  printf '\n' >&"$LOG_FD"
+}
+
+die() {
+  loge "$@"
+  exit 1
+}
