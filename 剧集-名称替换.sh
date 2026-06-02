@@ -196,11 +196,12 @@ sync_subtitle() {
     local dir
     dir="$(dirname "$file")"
 
-    if [[ ! "$filename" =~ (S[0-9]{2}E[0-9]{2}) ]]; then
+    if [[ ! "$filename" =~ ([sS][0-9]{2}[eE][0-9]{2}) ]]; then
       continue
     fi
 
     local episode="${BASH_REMATCH[1]}"
+    episode="${episode^^}"
 
     local mkv_file
     mkv_file="$(

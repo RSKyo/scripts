@@ -12,6 +12,9 @@ usage() {
   echo
   exit 1
 }
+# eg: $0 <目录> --en "language_ietf=en,track_name=SDH" --zh "track_name=Simplified"
+# eg: $0 <目录> --en "track_name=English [SDH]" --zh "track_name=Chinese Simplified"
+
 
 [[ $# -lt 5 ]] && usage
 
